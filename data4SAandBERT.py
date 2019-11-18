@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 # coding: utf-8
 # %%
-
+import os
+# os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 import warnings
 
 warnings.filterwarnings("ignore")
@@ -13,7 +14,6 @@ from datetime import datetime
 import os
 import glob
 from pathlib import Path
-import os
 import re
 
 #
@@ -67,20 +67,26 @@ def IMDB_to_csv(directory, read_from_source=False):
         'pos': 1
     }
     # typeOfData=os.path.basename(directory)
-    pOut = Path(directory)/ "imdb_complete.csv"
+    mainDir = Path(directory)
+    pOut = mainDir / "imdb_complete.csv"
     if pOut.exists() and (not read_from_source):
+        print(f'* Reading from File {pOut}')
         dataRes = pd.read_csv(pOut, delimiter = ',')
     else:
         data = pd.DataFrame()
-        negPath = Path(directory + "/neg/*.txt")
+        negPath = mainDir / "neg" /"*.txt"
         # for filename in glob.glob(str(directory) + '\\neg\\*.txt'):
+        print(f'Reading files  {os._fspath(negPath)}')
         dataNeg = extractIMDBdata(data, negPath, sentimentMap)
-        posPath = Path(directory + "/pos/*.txt")
+        # posPath = Path(directory + "/pos/*.txt")
+        posPath =  mainDir / "pos" /"*.txt"
+        print(f'Reading files  {os._fspath(posPath)}')
         dataPos = extractIMDBdata(data, posPath, sentimentMap)
         # data = data.sort_values(['pol', 'id'])
         # data = data.reset_index(drop=True)
         # # data['rating_norm'] = (data['rating'] - data['rating'].min())/( data['rating'].max() - data['rating'].min() )
         dataRes= pd.concat([dataPos, dataNeg]).sample(frac=1).reset_index(drop=True)
+        print(f"Saving file to {os._fspath(pOut)}")
         dataRes.to_csv(pOut,  index=False)
     return(dataRes)
 
@@ -119,11 +125,12 @@ def readImdbData(imdb_dir, readFromSource=False):
     :param imdb_dir:
     :return:
     """
-    abs_imdb_dir = os.path.abspath(imdb_dir)
+    abs_imdb_dir = Path(imdb_dir).resolve()
+    # abs_imdb_dir = os.path.abspath(imdb_dir)
     if os.path.exists(abs_imdb_dir):
-        print(f'File with imdb training data  {abs_imdb_dir} exists')
+        print(f'Directory with imdb training data  {abs_imdb_dir} exists')
     else:
-        print(f'File with imdb training data  "{abs_imdb_dir}" does not exists')
+        print(f'Directory with imdb training data  "{abs_imdb_dir}" does not exists')
     # print(f'Training data in {abs_imdb_dir}')
     data = IMDB_to_csv(abs_imdb_dir,readFromSource)
     return (data)
@@ -133,16 +140,18 @@ def readImdbData(imdb_dir, readFromSource=False):
 def main():
     # %%
     ## read IMDB data
-    train_dir_Imdb = 'Data/sentiment/Data/IMDB Reviews/IMDB Data/train/'
+    train_dir_Imdb = '../Data/sentiment/Data/IMDB Reviews/IMDB Data/train/'
     # load_directory_data(train_dir_Imdb)
+    print(f'Reading {train_dir_Imdb}')
     imdbTrainData = readImdbData(train_dir_Imdb)
     # %%
-    test_dir_Imdb = 'Data/sentiment/Data/IMDB Reviews/IMDB Data/test/'
+    test_dir_Imdb = '../Data/sentiment/Data/IMDB Reviews/IMDB Data/test/' #'Data/sentiment/Data/IMDB Reviews/IMDB Data/test/'
+    print(f'Reading {test_dir_Imdb}')
     imdbTestData = readImdbData(test_dir_Imdb)
     # %%
     print(f'Finished')
     print(f'---------------')
     # transfrom Imdb data
 
-if __name__ == "main":
+if __name__ == "__main__":
     main()

@@ -15,7 +15,8 @@ from bert import tokenization
 import data4SAandBERT
 import tensorflow as tf
 import tensorflow_hub as hub
-
+from pathlib import Path
+import os
 
 # get_ipython().system('pwd')
 
@@ -239,18 +240,37 @@ def model_fn_builder(num_labels, learning_rate, num_train_steps,
     # Return the actual model function in the closure
     return model_fn
 
+class DataVersionAppendix:
+    shortVersion="_short"
+    normal = ""
+
+class DataLocation():
+    def __init__(self):
+        self.dECMT=r'Data\sentiment\Data\IMDB Reviews\IMDB Data'
+        self.lenovo=r'../Data/sentiment/Data/IMDB Reviews/IMDB Data/'
 
 # %% MAIN
 def main():
-    READ_FROM_SOURCE = True
+    #%% Select location of data directory based on Manchine
+    dataLocation=DataLocation()
+    dataVersionAppendix=DataVersionAppendix()
+    DATA_LOCATION_RELATIVE_TO_CODE=dataLocation.lenovo
+    DATA_VERSION_APPENDIX=dataVersionAppendix.shortVersion
+    READ_FROM_SOURCE = False
+    #%% =================================================
     DATA_INFO = DataInfo()
     PROCESSING_INFO = ProcessingInfo()
     # %% Read Data
     print(f'IMDB data column: {DATA_INFO.DATA_COLUMN}')
     print('Reading training imdb_data')
     # train_dir_Imdb = 'Data/sentiment/Data/IMDB Reviews/IMDB Data/train/'
-    train_dir_Imdb = 'Data/sentiment/Data/IMDB Reviews/IMDB Data/train_short/'
+    # C:\Work\dev\Transportability\Data\sentiment\Data\IMDB Reviews\IMDB Data\test
+    train_dir_ImdbP=Path(DATA_LOCATION_RELATIVE_TO_CODE) / ('train'+DATA_VERSION_APPENDIX)
+    # train_dir_Imdb = r'Data\sentiment\Data\IMDB Reviews\IMDB Data\train'
+    train_dir_Imdb_short = 'Data/sentiment/Data/IMDB Reviews/IMDB Data/train_short/'
     # load_directory_data(train_dir_Imdb)
+    train_dir_Imdb=os._fspath(train_dir_ImdbP)
+    print(f'Preparing to read from {train_dir_Imdb}')
     imdbTrainData = data4SAandBERT.readImdbData(train_dir_Imdb, readFromSource=DATA_INFO.READ_FROM_SOURCE)
     print('creating examples from train data')
     # %%
@@ -277,4 +297,5 @@ def main():
     print('Finished All')
 
 
-main()
+if __name__=="__main__":
+    main()
