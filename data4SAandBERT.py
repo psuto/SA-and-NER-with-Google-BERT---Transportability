@@ -125,7 +125,7 @@ def readImdbData(imdb_dir, readFromSource=False):
     :param imdb_dir:
     :return:
     """
-    abs_imdb_dir = Path(imdb_dir).resolve()
+    abs_imdb_dir = Path(imdb_dir).absolute().resolve()
     # abs_imdb_dir = os.path.abspath(imdb_dir)
     if os.path.exists(abs_imdb_dir):
         print(f'Directory with imdb training data  {abs_imdb_dir} exists')

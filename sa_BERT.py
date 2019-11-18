@@ -18,29 +18,13 @@ import tensorflow_hub as hub
 from pathlib import Path
 import os
 
+
 # get_ipython().system('pwd')
 
 
 # !pwd # under linux/mac
 # 'echo %cd% # under windows'
 # get_ipython().run_line_magic('!pwd', '')
-
-
-# %%
-
-class DataInfo:
-    def __init__(self):
-        self.DATA_COLUMN = 'text'
-        self.LABEL_COLUMN = 'polarity'
-        self.READ_FROM_SOURCE = False  # True
-        self.BERT_MODEL_HUB = "https://tfhub.dev/google/bert_uncased_L-12_H-768_A-12/1"
-        # label_list is the list of labels, i.e. True, False or 0, 1 or 'dog', 'cat'
-        self.CASE_LABEL_LIST = [0, 1]
-
-
-class ProcessingInfo():
-    def __init__(self):
-        self.MAX_SEQ_LENGTH = 128
 
 
 # %% Get examples
@@ -240,44 +224,228 @@ def model_fn_builder(num_labels, learning_rate, num_train_steps,
     # Return the actual model function in the closure
     return model_fn
 
+
+def model_fn_builder(num_labels, learning_rate, num_train_steps,
+                     num_warmup_steps):
+    """Returns `model_fn` closure for TPUEstimator.
+    # model_fn_builder actually creates our model function
+    # using the passed parameters for num_labels, learning_rate, etc.
+
+    :param num_labels:
+    :param learning_rate:
+    :param num_train_steps:
+    :param num_warmup_steps:
+    :return:
+    """
+
+    def model_fn(features, labels, mode, params):  # pylint: disable=unused-argument
+        """The `model_fn` for TPUEstimator."""
+
+        input_ids = features["input_ids"]
+        input_mask = features["input_mask"]
+        segment_ids = features["segment_ids"]
+        label_ids = features["label_ids"]
+
+        is_predicting = (mode == tf.estimator.ModeKeys.PREDICT)
+
+        # TRAIN and EVAL
+        if not is_predicting:
+
+            (loss, predicted_labels, log_probs) = create_model(
+                is_predicting, input_ids, input_mask, segment_ids, label_ids, num_labels)
+
+            train_op = bert.optimization.create_optimizer(
+                loss, learning_rate, num_train_steps, num_warmup_steps, use_tpu=False)
+
+            def metric_fn(label_ids, predicted_labels):
+                accuracy = tf.metrics.accuracy(label_ids, predicted_labels)
+                f1_score = tf.contrib.metrics.f1_score(
+                    label_ids,
+                    predicted_labels)
+                auc = tf.metrics.auc(
+                    label_ids,
+                    predicted_labels)
+                recall = tf.metrics.recall(
+                    label_ids,
+                    predicted_labels)
+                precision = tf.metrics.precision(
+                    label_ids,
+                    predicted_labels)
+                true_pos = tf.metrics.true_positives(
+                    label_ids,
+                    predicted_labels)
+                true_neg = tf.metrics.true_negatives(
+                    label_ids,
+                    predicted_labels)
+                false_pos = tf.metrics.false_positives(
+                    label_ids,
+                    predicted_labels)
+                false_neg = tf.metrics.false_negatives(
+                    label_ids,
+                    predicted_labels)
+                return {
+                    "eval_accuracy": accuracy,
+                    "f1_score": f1_score,
+                    "auc": auc,
+                    "precision": precision,
+                    "recall": recall,
+                    "true_positives": true_pos,
+                    "true_negatives": true_neg,
+                    "false_positives": false_pos,
+                    "false_negatives": false_neg
+                }
+
+            # Calculate evaluation metrics.
+
+            eval_metrics = metric_fn(label_ids, predicted_labels)
+
+            if mode == tf.estimator.ModeKeys.TRAIN:
+                return tf.estimator.EstimatorSpec(mode=mode,
+                                                  loss=loss,
+                                                  train_op=train_op)
+            else:
+                return tf.estimator.EstimatorSpec(mode=mode,
+                                                  loss=loss,
+                                                  eval_metric_ops=eval_metrics)
+        else:
+            (predicted_labels, log_probs) = create_model(
+                is_predicting, input_ids, input_mask, segment_ids, label_ids, num_labels)
+
+            predictions = {
+                'probabilities': log_probs,
+                'labels': predicted_labels
+            }
+            return tf.estimator.EstimatorSpec(mode, predictions=predictions)
+
+    # Return the actual model function in the closure
+    return model_fn
+
+
+class NumberOfStepsEstimator():
+    def __init__(self, numTrainingFeatures, batchSize, numTrainingEpochs, warmupProportion, ):
+        # Compute # train and warmup steps from batch size
+        self.num_train_steps = int(
+            numTrainingFeatures / batchSize * numTrainingEpochs)  # int(len(train_features) / BATCH_SIZE * NUM_TRAIN_EPOCHS)
+        self.num_warmup_steps = int(self.num_train_steps * warmupProportion)
+        print(f'num_train_steps = {self.num_train_steps}')
+        print(f'num train features = {len(self.train_features)}')
+
+    def getNumOfTrainSteps(self):
+        return (self.num_train_steps)
+
+    def getNumOfWarmUpSteps(self):
+        return self.num_warmup_steps
+
+
+
+def getTFEstimatorParameters(OUTPUT_DIR,SAVE_SUMMARY_STEPS,SAVE_CHECKPOINTS_STEPS):
+    """
+
+    :param OUTPUT_DIR:
+    :param SAVE_SUMMARY_STEPS:
+    :param SAVE_CHECKPOINTS_STEPS:
+    :return:
+    """
+    run_config = tf.estimator.RunConfig(
+        model_dir=OUTPUT_DIR,
+        save_summary_steps=SAVE_SUMMARY_STEPS,
+        save_checkpoints_steps=SAVE_CHECKPOINTS_STEPS)
+    return run_config
+
+
+# %% Various run parameters
+
+class DataInfo:
+    def __init__(self):
+        self.LABEL_COLUMN = 'polarity'
+        self.DATA_COLUMN = 'text'
+        self.READ_FROM_SOURCE = False  # True
+        self.BERT_MODEL_HUB = "https://tfhub.dev/google/bert_uncased_L-12_H-768_A-12/1"
+        # label_list is the list of labels, i.e. True, False or 0, 1 or 'dog', 'cat'
+        self.CASE_LABEL_LIST = [0, 1]
+
+
 class DataVersionAppendix:
-    shortVersion="_short"
-    normal = ""
+    def __init__(self):
+        self.normal = ""
+        self.shortVersion = "_short"
+
 
 class DataLocation():
     def __init__(self):
-        self.dECMT=r'Data\sentiment\Data\IMDB Reviews\IMDB Data'
-        self.lenovo=r'../Data/sentiment/Data/IMDB Reviews/IMDB Data/'
+        self.dECMT = r"..\Data\sentiment\Data\IMDB Reviews\IMDB Data"
+        self.lenovo = '../Data/sentiment/Data/IMDB Reviews/IMDB Data'
 
-# %% MAIN
+
+# Compute train and warmup steps from batch size
+# These hyperparameters are copied from this colab notebook (https://colab.sandbox.google.com/github/tensorflow/tpu/blob/master/tools/colab/bert_finetuning_with_cloud_tpus.ipynb)
+
+
+class ProcessingInfo():
+    def __init__(self):
+        self.BATCH_SIZE = 32
+        self.LEARNING_RATE = 2e-5
+        self.NUM_TRAIN_EPOCHS = 3.0
+        # Warmup is a period of time where hte learning rate
+        # is small and gradually increases--usually helps training.
+        self.WARMUP_PROPORTION = 0.1
+        # Model configs
+        self.SAVE_CHECKPOINTS_STEPS = 500
+        self.SAVE_SUMMARY_STEPS = 100
+        self.MAX_SEQ_LENGTH = 128
+
+class FilesAndFoldersUtility:
+    def __init__(self, currentTime):
+        self.currentTime = currentTime
+        self.currntTimeString =""
+
+
+# %% Create a classification model
+
+# %% Run main
+def getOutputDir(DATA_LOCATION_RELATIVE_TO_CODE, startDate):
+    print("")
+    print("")
+
+
 def main():
-    #%% Select location of data directory based on Manchine
-    dataLocation=DataLocation()
-    dataVersionAppendix=DataVersionAppendix()
-    DATA_LOCATION_RELATIVE_TO_CODE=dataLocation.lenovo
-    DATA_VERSION_APPENDIX=dataVersionAppendix.shortVersion
-    READ_FROM_SOURCE = False
-    #%% =================================================
+    # %% Select location of data directory based on Manchine
+    dataLocation = DataLocation()
+    dataVersionAppendix = DataVersionAppendix()
+    DATA_LOCATION_RELATIVE_TO_CODE = dataLocation.lenovo
+    DATA_VERSION_APPENDIX = dataVersionAppendix.shortVersion
+    READ_FROM_SOURCE = False  # True #False
+    # %% =================================================
     DATA_INFO = DataInfo()
     PROCESSING_INFO = ProcessingInfo()
     # %% Read Data
+    current_dir = Path(__file__).parent
+    print(f"Working  directory: {current_dir}")
     print(f'IMDB data column: {DATA_INFO.DATA_COLUMN}')
     print('Reading training imdb_data')
     # train_dir_Imdb = 'Data/sentiment/Data/IMDB Reviews/IMDB Data/train/'
     # C:\Work\dev\Transportability\Data\sentiment\Data\IMDB Reviews\IMDB Data\test
-    train_dir_ImdbP=Path(DATA_LOCATION_RELATIVE_TO_CODE) / ('train'+DATA_VERSION_APPENDIX)
+    # Todo: 191118 Assign Start aate and time to varialbe
+    startDate = None
+    # Todo: 191118 Convert Date + Time to String
+    # Todo: Convert Date + Time to String
+    startDateString =""
+    OUTPUT_DIR = getOutputDir(DATA_LOCATION_RELATIVE_TO_CODE,startDateString)
+    train_dir_ImdbP = Path(DATA_LOCATION_RELATIVE_TO_CODE) / ('train' + DATA_VERSION_APPENDIX)
     # train_dir_Imdb = r'Data\sentiment\Data\IMDB Reviews\IMDB Data\train'
-    train_dir_Imdb_short = 'Data/sentiment/Data/IMDB Reviews/IMDB Data/train_short/'
+    # train_dir_Imdb_short = 'Data/sentiment/Data/IMDB Reviews/IMDB Data/train_short/'
     # load_directory_data(train_dir_Imdb)
-    train_dir_Imdb=os._fspath(train_dir_ImdbP)
-    print(f'Preparing to read from {train_dir_Imdb}')
+    train_dir_Imdb = os._fspath(train_dir_ImdbP)
+    print(f'Preparing to read from: {train_dir_Imdb}')
     imdbTrainData = data4SAandBERT.readImdbData(train_dir_Imdb, readFromSource=DATA_INFO.READ_FROM_SOURCE)
-    print('creating examples from train data')
+    print('Creating examples from train data')
     # %%
     # test_dir_Imdb = 'Data/sentiment/Data/IMDB Reviews/IMDB Data/test/'
-    test_dir_Imdb = 'Data/sentiment/Data/IMDB Reviews/IMDB Data/test_short/'
+    # Other: Test Data
+    test_dir_Imdb = train_dir_ImdbP = Path(DATA_LOCATION_RELATIVE_TO_CODE) / (
+                'test' + DATA_VERSION_APPENDIX)  # 'Data/sentiment/Data/IMDB Reviews/IMDB Data/test_short/'
     imdbTestData = data4SAandBERT.readImdbData(test_dir_Imdb, readFromSource=DATA_INFO.READ_FROM_SOURCE)
-    print('creating examples from test data')
+    print('Creating examples from test data')
 
     # %% Process data
     print('Finished reading imdb_data ')
@@ -288,14 +456,19 @@ def main():
     print('Creating tokenizer')
     tokenizer = create_tokenizer_from_hub_module(DATA_INFO)
     tokenizingExample(tokenizer)
-    # %%
+    # %% Getting Features from test and training data
 
     # Convert our train and test features to InputFeatures that BERT understands.
     train_features = createFeatures(trainInputExamples, tokenizer, DATA_INFO.CASE_LABEL_LIST, PROCESSING_INFO)
     test_features = createFeatures(testInputExamples, tokenizer, DATA_INFO.CASE_LABEL_LIST, PROCESSING_INFO)
+    # %% Get Tensor Flow estimator parameters
+    PROCESSING_INFO = ProcessingInfo()
+    trEstimatorParameters = getTFEstimatorParameters()
+
     # %% Finish
     print('Finished All')
 
 
-if __name__=="__main__":
+# %% MAIN
+if __name__ == "__main__":
     main()
