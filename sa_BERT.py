@@ -17,7 +17,10 @@ import tensorflow as tf
 import tensorflow_hub as hub
 from pathlib import Path
 import os
-
+import time, argparse
+import cProfile
+import timeit
+from tensorflow_core.python  import keras
 
 # get_ipython().system('pwd')
 
@@ -139,94 +142,94 @@ def create_model(is_predicting, input_ids, input_mask, segment_ids, labels,
 
 # model_fn_builder actually creates our model function
 # using the passed parameters for num_labels, learning_rate, etc.
+# def model_fn_builder(num_labels, learning_rate, num_train_steps,
+#                      num_warmup_steps):
+#     """Returns `model_fn` closure for TPUEstimator."""
+#
+#     def model_fn(features, labels, mode, params):  # pylint: disable=unused-argument
+#         """The `model_fn` for TPUEstimator."""
+#
+#         input_ids = features["input_ids"]
+#         input_mask = features["input_mask"]
+#         segment_ids = features["segment_ids"]
+#         label_ids = features["label_ids"]
+#
+#         is_predicting = (mode == tf.estimator.ModeKeys.PREDICT)
+#
+#         # TRAIN and EVAL
+#         if not is_predicting:
+#
+#             (loss, predicted_labels, log_probs) = create_model(
+#                 is_predicting, input_ids, input_mask, segment_ids, label_ids, num_labels)
+#
+#             train_op = bert.optimization.create_optimizer(
+#                 loss, learning_rate, num_train_steps, num_warmup_steps, use_tpu=False)
+#
+#             # Calculate evaluation metrics.
+#             def metric_fn(label_ids, predicted_labels):
+#                 accuracy = tf.metrics.accuracy(label_ids, predicted_labels)
+#                 f1_score = tf.contrib.metrics.f1_score(
+#                     label_ids,
+#                     predicted_labels)
+#                 auc = tf.metrics.auc(
+#                     label_ids,
+#                     predicted_labels)
+#                 recall = tf.metrics.recall(
+#                     label_ids,
+#                     predicted_labels)
+#                 precision = tf.metrics.precision(
+#                     label_ids,
+#                     predicted_labels)
+#                 true_pos = tf.metrics.true_positives(
+#                     label_ids,
+#                     predicted_labels)
+#                 true_neg = tf.metrics.true_negatives(
+#                     label_ids,
+#                     predicted_labels)
+#                 false_pos = tf.metrics.false_positives(
+#                     label_ids,
+#                     predicted_labels)
+#                 false_neg = tf.metrics.false_negatives(
+#                     label_ids,
+#                     predicted_labels)
+#                 return {
+#                     "eval_accuracy": accuracy,
+#                     "f1_score": f1_score,
+#                     "auc": auc,
+#                     "precision": precision,
+#                     "recall": recall,
+#                     "true_positives": true_pos,
+#                     "true_negatives": true_neg,
+#                     "false_positives": false_pos,
+#                     "false_negatives": false_neg
+#                 }
+#
+#             eval_metrics = metric_fn(label_ids, predicted_labels)
+#
+#             if mode == tf.estimator.ModeKeys.TRAIN:
+#                 return tf.estimator.EstimatorSpec(mode=mode,
+#                                                   loss=loss,
+#                                                   train_op=train_op)
+#             else:
+#                 return tf.estimator.EstimatorSpec(mode=mode,
+#                                                   loss=loss,
+#                                                   eval_metric_ops=eval_metrics)
+#         else:
+#             (predicted_labels, log_probs) = create_model(
+#                 is_predicting, input_ids, input_mask, segment_ids, label_ids, num_labels)
+#
+#             predictions = {
+#                 'probabilities': log_probs,
+#                 'labels': predicted_labels
+#             }
+#             return tf.estimator.EstimatorSpec(mode, predictions=predictions)
+#
+#     # Return the actual model function in the closure
+#     return model_fn
+
+
 def model_fn_builder(num_labels, learning_rate, num_train_steps,
-                     num_warmup_steps):
-    """Returns `model_fn` closure for TPUEstimator."""
-
-    def model_fn(features, labels, mode, params):  # pylint: disable=unused-argument
-        """The `model_fn` for TPUEstimator."""
-
-        input_ids = features["input_ids"]
-        input_mask = features["input_mask"]
-        segment_ids = features["segment_ids"]
-        label_ids = features["label_ids"]
-
-        is_predicting = (mode == tf.estimator.ModeKeys.PREDICT)
-
-        # TRAIN and EVAL
-        if not is_predicting:
-
-            (loss, predicted_labels, log_probs) = create_model(
-                is_predicting, input_ids, input_mask, segment_ids, label_ids, num_labels)
-
-            train_op = bert.optimization.create_optimizer(
-                loss, learning_rate, num_train_steps, num_warmup_steps, use_tpu=False)
-
-            # Calculate evaluation metrics.
-            def metric_fn(label_ids, predicted_labels):
-                accuracy = tf.metrics.accuracy(label_ids, predicted_labels)
-                f1_score = tf.contrib.metrics.f1_score(
-                    label_ids,
-                    predicted_labels)
-                auc = tf.metrics.auc(
-                    label_ids,
-                    predicted_labels)
-                recall = tf.metrics.recall(
-                    label_ids,
-                    predicted_labels)
-                precision = tf.metrics.precision(
-                    label_ids,
-                    predicted_labels)
-                true_pos = tf.metrics.true_positives(
-                    label_ids,
-                    predicted_labels)
-                true_neg = tf.metrics.true_negatives(
-                    label_ids,
-                    predicted_labels)
-                false_pos = tf.metrics.false_positives(
-                    label_ids,
-                    predicted_labels)
-                false_neg = tf.metrics.false_negatives(
-                    label_ids,
-                    predicted_labels)
-                return {
-                    "eval_accuracy": accuracy,
-                    "f1_score": f1_score,
-                    "auc": auc,
-                    "precision": precision,
-                    "recall": recall,
-                    "true_positives": true_pos,
-                    "true_negatives": true_neg,
-                    "false_positives": false_pos,
-                    "false_negatives": false_neg
-                }
-
-            eval_metrics = metric_fn(label_ids, predicted_labels)
-
-            if mode == tf.estimator.ModeKeys.TRAIN:
-                return tf.estimator.EstimatorSpec(mode=mode,
-                                                  loss=loss,
-                                                  train_op=train_op)
-            else:
-                return tf.estimator.EstimatorSpec(mode=mode,
-                                                  loss=loss,
-                                                  eval_metric_ops=eval_metrics)
-        else:
-            (predicted_labels, log_probs) = create_model(
-                is_predicting, input_ids, input_mask, segment_ids, label_ids, num_labels)
-
-            predictions = {
-                'probabilities': log_probs,
-                'labels': predicted_labels
-            }
-            return tf.estimator.EstimatorSpec(mode, predictions=predictions)
-
-    # Return the actual model function in the closure
-    return model_fn
-
-
-def model_fn_builder(num_labels, learning_rate, num_train_steps,
-                     num_warmup_steps):
+                     num_warmup_steps,BERT_MODEL_HUB):
     """Returns `model_fn` closure for TPUEstimator.
     # model_fn_builder actually creates our model function
     # using the passed parameters for num_labels, learning_rate, etc.
@@ -252,7 +255,7 @@ def model_fn_builder(num_labels, learning_rate, num_train_steps,
         if not is_predicting:
 
             (loss, predicted_labels, log_probs) = create_model(
-                is_predicting, input_ids, input_mask, segment_ids, label_ids, num_labels)
+                is_predicting, input_ids, input_mask, segment_ids, label_ids, num_labels,BERT_MODEL_HUB)
 
             train_op = bert.optimization.create_optimizer(
                 loss, learning_rate, num_train_steps, num_warmup_steps, use_tpu=False)
@@ -328,7 +331,7 @@ class NumberOfStepsEstimator():
             numTrainingFeatures / batchSize * numTrainingEpochs)  # int(len(train_features) / BATCH_SIZE * NUM_TRAIN_EPOCHS)
         self.num_warmup_steps = int(self.num_train_steps * warmupProportion)
         print(f'num_train_steps = {self.num_train_steps}')
-        print(f'num train features = {len(self.train_features)}')
+        print(f'num train features = {numTrainingFeatures}')
 
     def getNumOfTrainSteps(self):
         return (self.num_train_steps)
@@ -337,8 +340,7 @@ class NumberOfStepsEstimator():
         return self.num_warmup_steps
 
 
-
-def getTFEstimatorParameters(OUTPUT_DIR,SAVE_SUMMARY_STEPS,SAVE_CHECKPOINTS_STEPS):
+def getTFEstimatorParameters(OUTPUT_DIR, SAVE_SUMMARY_STEPS, SAVE_CHECKPOINTS_STEPS):
     """
 
     :param OUTPUT_DIR:
@@ -383,6 +385,9 @@ class DataLocation():
 
 class ProcessingInfo():
     def __init__(self):
+        self.time = time
+        self.timeStr = time.strftime("%Y-%m-%d__%H-%M-%S")
+        self.dateTimeformatingStr = "%Y-%m-%d__%H-%M-%S"
         self.BATCH_SIZE = 32
         self.LEARNING_RATE = 2e-5
         self.NUM_TRAIN_EPOCHS = 3.0
@@ -394,18 +399,24 @@ class ProcessingInfo():
         self.SAVE_SUMMARY_STEPS = 100
         self.MAX_SEQ_LENGTH = 128
 
+
 class FilesAndFoldersUtility:
     def __init__(self, currentTime):
         self.currentTime = currentTime
-        self.currntTimeString =""
+        self.currntTimeString = ""
 
 
 # %% Create a classification model
 
 # %% Run main
 def getOutputDir(DATA_LOCATION_RELATIVE_TO_CODE, startDate):
+    outDir1 = Path(DATA_LOCATION_RELATIVE_TO_CODE).absolute() / 'Output' / (
+                'Output_' + startDate.strftime("%Y-%m-%d__%H-%M-%S"))
+    outDir = outDir1.resolve()
+    outDir.mkdir(parents=True, exist_ok=True)
+    print(f"Output path {str(outDir)}")
     print("")
-    print("")
+    return str(outDir)
 
 
 def main():
@@ -429,8 +440,8 @@ def main():
     startDate = None
     # Todo: 191118 Convert Date + Time to String
     # Todo: Convert Date + Time to String
-    startDateString =""
-    OUTPUT_DIR = getOutputDir(DATA_LOCATION_RELATIVE_TO_CODE,startDateString)
+    startDateString = ""
+    OUTPUT_DIR = getOutputDir(DATA_LOCATION_RELATIVE_TO_CODE, PROCESSING_INFO.time)
     train_dir_ImdbP = Path(DATA_LOCATION_RELATIVE_TO_CODE) / ('train' + DATA_VERSION_APPENDIX)
     # train_dir_Imdb = r'Data\sentiment\Data\IMDB Reviews\IMDB Data\train'
     # train_dir_Imdb_short = 'Data/sentiment/Data/IMDB Reviews/IMDB Data/train_short/'
@@ -443,7 +454,7 @@ def main():
     # test_dir_Imdb = 'Data/sentiment/Data/IMDB Reviews/IMDB Data/test/'
     # Other: Test Data
     test_dir_Imdb = train_dir_ImdbP = Path(DATA_LOCATION_RELATIVE_TO_CODE) / (
-                'test' + DATA_VERSION_APPENDIX)  # 'Data/sentiment/Data/IMDB Reviews/IMDB Data/test_short/'
+            'test' + DATA_VERSION_APPENDIX)  # 'Data/sentiment/Data/IMDB Reviews/IMDB Data/test_short/'
     imdbTestData = data4SAandBERT.readImdbData(test_dir_Imdb, readFromSource=DATA_INFO.READ_FROM_SOURCE)
     print('Creating examples from test data')
 
@@ -462,10 +473,54 @@ def main():
     train_features = createFeatures(trainInputExamples, tokenizer, DATA_INFO.CASE_LABEL_LIST, PROCESSING_INFO)
     test_features = createFeatures(testInputExamples, tokenizer, DATA_INFO.CASE_LABEL_LIST, PROCESSING_INFO)
     # %% Get Tensor Flow estimator parameters
-    PROCESSING_INFO = ProcessingInfo()
-    trEstimatorParameters = getTFEstimatorParameters()
+    # PROCESSING_INFO = ProcessingInfo()
+    trEstimatorParameters = getTFEstimatorParameters(OUTPUT_DIR,PROCESSING_INFO.SAVE_SUMMARY_STEPS,PROCESSING_INFO.SAVE_CHECKPOINTS_STEPS)
+
+    #%% Specify outpit directory and number of checkpoint steps to save
+    run_config = tf.estimator.RunConfig(
+        model_dir=OUTPUT_DIR,
+        save_summary_steps=PROCESSING_INFO.SAVE_SUMMARY_STEPS,
+        save_checkpoints_steps=PROCESSING_INFO.SAVE_CHECKPOINTS_STEPS)
 
     # %% Finish
+    #%% Estimating number of steps (heuristics?)
+    #Todo: 191119 Check huristics in NumberOfStepsEstimator
+    numberOfStepsEstimator = NumberOfStepsEstimator(len(train_features),PROCESSING_INFO.BATCH_SIZE,PROCESSING_INFO.NUM_TRAIN_EPOCHS,PROCESSING_INFO.WARMUP_PROPORTION)
+
+    #%% Estimator setting
+    model_fn = model_fn_builder(
+        num_labels=len(DATA_INFO.CASE_LABEL_LIST),
+        learning_rate=PROCESSING_INFO.LEARNING_RATE,
+        num_train_steps=numberOfStepsEstimator.getNumOfTrainSteps, # num_train_steps,
+        num_warmup_steps=numberOfStepsEstimator.getNumOfWarmUpSteps(),BERT_MODEL_HUB=DATA_INFO.BERT_MODEL_HUB)
+
+    estimator = tf.estimator.Estimator(
+        model_fn=model_fn,
+        config=run_config,
+        params={"batch_size":PROCESSING_INFO.BATCH_SIZE})
+
+    #%% Create an input function for training. drop_remainder = True for using TPUs.
+    train_input_fn = bert.run_classifier.input_fn_builder(
+        features=train_features,
+        seq_length=PROCESSING_INFO.MAX_SEQ_LENGTH,
+        is_training=True,
+        drop_remainder=False)
+
+    #%% Train estimator
+    print(f'Beginning Training!')
+    current_time = time.time()
+    timeit.timeit(estimator.train(input_fn=train_input_fn, max_steps= numberOfStepsEstimator.getNumOfTrainSteps()),filename="running estimator",number=1)
+    print("Training took time ", time.time() - current_time)
+
+    #%%  Evaluating trained estimator
+    test_input_fn = run_classifier.input_fn_builder(
+        features=test_features,
+        seq_length= PROCESSING_INFO.MAX_SEQ_LENGTH,
+        is_training=False,
+        drop_remainder=False)
+
+    evaluationResults = estimator.evaluate(input_fn=test_input_fn, steps=None)
+    print(evaluationResults)
     print('Finished All')
 
 
