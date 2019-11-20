@@ -494,7 +494,7 @@ def main():
     model_fn = model_fn_builder(
         num_labels=len(DATA_INFO.CASE_LABEL_LIST),
         learning_rate=PROCESSING_INFO.LEARNING_RATE,
-        num_train_steps=numberOfStepsEstimator.getNumOfTrainSteps,  # num_train_steps,
+        num_train_steps=numberOfStepsEstimator.getNumOfTrainSteps(),  # num_train_steps,
         num_warmup_steps=numberOfStepsEstimator.getNumOfWarmUpSteps(), BERT_MODEL_HUB=DATA_INFO.BERT_MODEL_HUB)
 
     estimator = tf.estimator.Estimator(
