@@ -20,7 +20,8 @@ import os
 import time, argparse
 import cProfile
 import timeit
-from tensorflow_core.python  import keras
+from tensorflow import keras
+
 
 # get_ipython().system('pwd')
 
@@ -229,7 +230,7 @@ def create_model(is_predicting, input_ids, input_mask, segment_ids, labels,
 
 
 def model_fn_builder(num_labels, learning_rate, num_train_steps,
-                     num_warmup_steps,BERT_MODEL_HUB):
+                     num_warmup_steps, BERT_MODEL_HUB):
     """Returns `model_fn` closure for TPUEstimator.
     # model_fn_builder actually creates our model function
     # using the passed parameters for num_labels, learning_rate, etc.
@@ -255,7 +256,7 @@ def model_fn_builder(num_labels, learning_rate, num_train_steps,
         if not is_predicting:
 
             (loss, predicted_labels, log_probs) = create_model(
-                is_predicting, input_ids, input_mask, segment_ids, label_ids, num_labels,BERT_MODEL_HUB)
+                is_predicting, input_ids, input_mask, segment_ids, label_ids, num_labels, BERT_MODEL_HUB)
 
             train_op = bert.optimization.create_optimizer(
                 loss, learning_rate, num_train_steps, num_warmup_steps, use_tpu=False)
@@ -411,7 +412,7 @@ class FilesAndFoldersUtility:
 # %% Run main
 def getOutputDir(DATA_LOCATION_RELATIVE_TO_CODE, startDate):
     outDir1 = Path(DATA_LOCATION_RELATIVE_TO_CODE).absolute() / 'Output' / (
-                'Output_' + startDate.strftime("%Y-%m-%d__%H-%M-%S"))
+            'Output_' + startDate.strftime("%Y-%m-%d__%H-%M-%S"))
     outDir = outDir1.resolve()
     outDir.mkdir(parents=True, exist_ok=True)
     print(f"Output path {str(outDir)}")
@@ -474,48 +475,51 @@ def main():
     test_features = createFeatures(testInputExamples, tokenizer, DATA_INFO.CASE_LABEL_LIST, PROCESSING_INFO)
     # %% Get Tensor Flow estimator parameters
     # PROCESSING_INFO = ProcessingInfo()
-    trEstimatorParameters = getTFEstimatorParameters(OUTPUT_DIR,PROCESSING_INFO.SAVE_SUMMARY_STEPS,PROCESSING_INFO.SAVE_CHECKPOINTS_STEPS)
+    trEstimatorParameters = getTFEstimatorParameters(OUTPUT_DIR, PROCESSING_INFO.SAVE_SUMMARY_STEPS,
+                                                     PROCESSING_INFO.SAVE_CHECKPOINTS_STEPS)
 
-    #%% Specify outpit directory and number of checkpoint steps to save
+    # %% Specify outpit directory and number of checkpoint steps to save
     run_config = tf.estimator.RunConfig(
         model_dir=OUTPUT_DIR,
         save_summary_steps=PROCESSING_INFO.SAVE_SUMMARY_STEPS,
         save_checkpoints_steps=PROCESSING_INFO.SAVE_CHECKPOINTS_STEPS)
 
     # %% Finish
-    #%% Estimating number of steps (heuristics?)
-    #Todo: 191119 Check huristics in NumberOfStepsEstimator
-    numberOfStepsEstimator = NumberOfStepsEstimator(len(train_features),PROCESSING_INFO.BATCH_SIZE,PROCESSING_INFO.NUM_TRAIN_EPOCHS,PROCESSING_INFO.WARMUP_PROPORTION)
+    # %% Estimating number of steps (heuristics?)
+    # Todo: 191119 Check huristics in NumberOfStepsEstimator
+    numberOfStepsEstimator = NumberOfStepsEstimator(len(train_features), PROCESSING_INFO.BATCH_SIZE,
+                                                    PROCESSING_INFO.NUM_TRAIN_EPOCHS, PROCESSING_INFO.WARMUP_PROPORTION)
 
-    #%% Estimator setting
+    # %% Estimator setting
     model_fn = model_fn_builder(
         num_labels=len(DATA_INFO.CASE_LABEL_LIST),
         learning_rate=PROCESSING_INFO.LEARNING_RATE,
-        num_train_steps=numberOfStepsEstimator.getNumOfTrainSteps, # num_train_steps,
-        num_warmup_steps=numberOfStepsEstimator.getNumOfWarmUpSteps(),BERT_MODEL_HUB=DATA_INFO.BERT_MODEL_HUB)
+        num_train_steps=numberOfStepsEstimator.getNumOfTrainSteps,  # num_train_steps,
+        num_warmup_steps=numberOfStepsEstimator.getNumOfWarmUpSteps(), BERT_MODEL_HUB=DATA_INFO.BERT_MODEL_HUB)
 
     estimator = tf.estimator.Estimator(
         model_fn=model_fn,
         config=run_config,
-        params={"batch_size":PROCESSING_INFO.BATCH_SIZE})
+        params={"batch_size": PROCESSING_INFO.BATCH_SIZE})
 
-    #%% Create an input function for training. drop_remainder = True for using TPUs.
+    # %% Create an input function for training. drop_remainder = True for using TPUs.
     train_input_fn = bert.run_classifier.input_fn_builder(
         features=train_features,
         seq_length=PROCESSING_INFO.MAX_SEQ_LENGTH,
         is_training=True,
         drop_remainder=False)
 
-    #%% Train estimator
+    # %% Train estimator
     print(f'Beginning Training!')
     current_time = time.time()
-    timeit.timeit(estimator.train(input_fn=train_input_fn, max_steps= numberOfStepsEstimator.getNumOfTrainSteps()),filename="running estimator",number=1)
+    timeit.timeit(estimator.train(input_fn=train_input_fn, max_steps=numberOfStepsEstimator.getNumOfTrainSteps()),
+                  filename="running estimator", number=1)
     print("Training took time ", time.time() - current_time)
 
-    #%%  Evaluating trained estimator
+    # %%  Evaluating trained estimator
     test_input_fn = run_classifier.input_fn_builder(
         features=test_features,
-        seq_length= PROCESSING_INFO.MAX_SEQ_LENGTH,
+        seq_length=PROCESSING_INFO.MAX_SEQ_LENGTH,
         is_training=False,
         drop_remainder=False)
 

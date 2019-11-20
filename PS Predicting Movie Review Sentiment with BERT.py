@@ -138,7 +138,8 @@ def load_datasets_from_dir(my_dataset_dir):
 
 # train, test = download_and_load_datasets()
 # train, test = load_datasets_from_dir("/home/uomadmin_ps/dev/tranportability/bert_sa/data/sentiment/Data/IMDB Reviews/IMDB Data")
-train, test = load_datasets_from_dir("/data/home/uomadmin_ps/PycharmProjects/SAwBertV00/Data/sentiment/Data/IMDB Reviews/IMDB Data/")
+# train, test = load_datasets_from_dir("/data/home/uomadmin_ps/PycharmProjects/SAwBertV00/Data/sentiment/Data/IMDB Reviews/IMDB Data/")
+train, test = load_datasets_from_dir("C:\Work\dev\Transportability\Bert_SA\Data\sentiment\Data\IMDB Reviews\IMDB Data")
 
 
 # To keep training fast, we'll take a sample of 5000 train and test examples, respectively.
@@ -558,5 +559,6 @@ predictions = getPrediction(pred_sentences)
 # In[44]:
 
 
-predictions
+print(predictions)
+print("Finished!!!")
 
