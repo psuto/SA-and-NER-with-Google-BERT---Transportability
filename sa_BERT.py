@@ -24,12 +24,13 @@ from tensorflow import keras
 import argparse
 
 parser = argparse.ArgumentParser(description="Simple")
-parser.add_argument("--inDirIMDB", action="store", dest="inputDirectoryIMDBData", type=str, default="Directory path needs to be specified",
+parser.add_argument("--inDirIMDB", action="store", dest="inputDirectoryIMDBData", type=str,
+                    default="Directory path needs to be specified",
                     help="file path to file with simulation output")
-
 
 params = parser.parse_args()  # ['--fSimul="oooooooooooooooooo"'],'--fWF="xxxxxxxxxxxxxxxxxxxx"'
 print(params)
+
 
 # get_ipython().system('pwd')
 
@@ -350,7 +351,7 @@ def main():
     # imdbRelPath= Path(imdbDataPath).relative_to(myCWD)
     # imdbRelPath= Path(imdbDataPath).relative_to(myCWD)
     # print(PurePath(imdbDataPath).relative_to(myCWD))
-    imdbRelPath= os.path.relpath(imdbDataPath,myCWD)
+    imdbRelPath = os.path.relpath(imdbDataPath, myCWD)
     print(f'imdb data relative path  = {imdbRelPath}')
     # dataLocation = DataLocation()
     dataVersionAppendix = DataVersionAppendix()
@@ -442,8 +443,8 @@ def main():
     # %% Train estimator
     print(f'Beginning Training!')
     current_time = time.time()
-    timeit.timeit(estimator.train(input_fn=train_input_fn, max_steps=numberOfStepsEstimator.getNumOfTrainSteps()),
-                  filename="running estimator", number=1)
+    # timeit.timeit(estimator.train(input_fn=train_input_fn, max_steps=numberOfStepsEstimator.getNumOfTrainSteps()),
+    estimator.train(input_fn=train_input_fn, max_steps=numberOfStepsEstimator.getNumOfTrainSteps())
     print("Training took time ", time.time() - current_time)
 
     # %%  Evaluating trained estimator
