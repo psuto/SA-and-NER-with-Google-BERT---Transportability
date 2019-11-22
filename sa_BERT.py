@@ -15,7 +15,7 @@ from bert import tokenization
 import data4SAandBERT
 import tensorflow as tf
 import tensorflow_hub as hub
-from pathlib import Path
+from pathlib import Path, PurePath
 import os
 import time, argparse
 import cProfile
@@ -347,10 +347,11 @@ def main():
     print(f'{imdbDataPath}')
     myCWD = Path.cwd()
     print(f'cwd = {myCWD}')
-    imdbRelPath= Path(imdbDataPath).relative_to(myCWD)
+    # imdbRelPath= Path(imdbDataPath).relative_to(myCWD)
+    # imdbRelPath= Path(imdbDataPath).relative_to(myCWD)
+    # print(PurePath(imdbDataPath).relative_to(myCWD))
+    imdbRelPath= os.path.relpath(imdbDataPath,myCWD)
     print(f'imdb data relative path  = {imdbRelPath}')
-
-
     # dataLocation = DataLocation()
     dataVersionAppendix = DataVersionAppendix()
     DATA_LOCATION_RELATIVE_TO_CODE = imdbRelPath
