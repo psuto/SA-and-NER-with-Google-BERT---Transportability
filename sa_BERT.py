@@ -21,7 +21,15 @@ import time, argparse
 import cProfile
 import timeit
 from tensorflow import keras
+import argparse
 
+parser = argparse.ArgumentParser(description="Simple")
+parser.add_argument("--inDirIMDB", action="store", dest="inputDirectoryIMDBData", type=str, default="Directory path needs to be specified",
+                    help="file path to file with simulation output")
+
+
+params = parser.parse_args()  # ['--fSimul="oooooooooooooooooo"'],'--fWF="xxxxxxxxxxxxxxxxxxxx"'
+print(params)
 
 # get_ipython().system('pwd')
 
@@ -140,94 +148,6 @@ def create_model(is_predicting, input_ids, input_mask, segment_ids, labels,
 
 
 # %%
-
-# model_fn_builder actually creates our model function
-# using the passed parameters for num_labels, learning_rate, etc.
-# def model_fn_builder(num_labels, learning_rate, num_train_steps,
-#                      num_warmup_steps):
-#     """Returns `model_fn` closure for TPUEstimator."""
-#
-#     def model_fn(features, labels, mode, params):  # pylint: disable=unused-argument
-#         """The `model_fn` for TPUEstimator."""
-#
-#         input_ids = features["input_ids"]
-#         input_mask = features["input_mask"]
-#         segment_ids = features["segment_ids"]
-#         label_ids = features["label_ids"]
-#
-#         is_predicting = (mode == tf.estimator.ModeKeys.PREDICT)
-#
-#         # TRAIN and EVAL
-#         if not is_predicting:
-#
-#             (loss, predicted_labels, log_probs) = create_model(
-#                 is_predicting, input_ids, input_mask, segment_ids, label_ids, num_labels)
-#
-#             train_op = bert.optimization.create_optimizer(
-#                 loss, learning_rate, num_train_steps, num_warmup_steps, use_tpu=False)
-#
-#             # Calculate evaluation metrics.
-#             def metric_fn(label_ids, predicted_labels):
-#                 accuracy = tf.metrics.accuracy(label_ids, predicted_labels)
-#                 f1_score = tf.contrib.metrics.f1_score(
-#                     label_ids,
-#                     predicted_labels)
-#                 auc = tf.metrics.auc(
-#                     label_ids,
-#                     predicted_labels)
-#                 recall = tf.metrics.recall(
-#                     label_ids,
-#                     predicted_labels)
-#                 precision = tf.metrics.precision(
-#                     label_ids,
-#                     predicted_labels)
-#                 true_pos = tf.metrics.true_positives(
-#                     label_ids,
-#                     predicted_labels)
-#                 true_neg = tf.metrics.true_negatives(
-#                     label_ids,
-#                     predicted_labels)
-#                 false_pos = tf.metrics.false_positives(
-#                     label_ids,
-#                     predicted_labels)
-#                 false_neg = tf.metrics.false_negatives(
-#                     label_ids,
-#                     predicted_labels)
-#                 return {
-#                     "eval_accuracy": accuracy,
-#                     "f1_score": f1_score,
-#                     "auc": auc,
-#                     "precision": precision,
-#                     "recall": recall,
-#                     "true_positives": true_pos,
-#                     "true_negatives": true_neg,
-#                     "false_positives": false_pos,
-#                     "false_negatives": false_neg
-#                 }
-#
-#             eval_metrics = metric_fn(label_ids, predicted_labels)
-#
-#             if mode == tf.estimator.ModeKeys.TRAIN:
-#                 return tf.estimator.EstimatorSpec(mode=mode,
-#                                                   loss=loss,
-#                                                   train_op=train_op)
-#             else:
-#                 return tf.estimator.EstimatorSpec(mode=mode,
-#                                                   loss=loss,
-#                                                   eval_metric_ops=eval_metrics)
-#         else:
-#             (predicted_labels, log_probs) = create_model(
-#                 is_predicting, input_ids, input_mask, segment_ids, label_ids, num_labels)
-#
-#             predictions = {
-#                 'probabilities': log_probs,
-#                 'labels': predicted_labels
-#             }
-#             return tf.estimator.EstimatorSpec(mode, predictions=predictions)
-#
-#     # Return the actual model function in the closure
-#     return model_fn
-
 
 def model_fn_builder(num_labels, learning_rate, num_train_steps,
                      num_warmup_steps, BERT_MODEL_HUB):
@@ -374,10 +294,10 @@ class DataVersionAppendix:
         self.shortVersion = "_short"
 
 
-class DataLocation():
-    def __init__(self):
-        self.dECMT = r"..\Data\sentiment\Data\IMDB Reviews\IMDB Data"
-        self.lenovo = '../Data/sentiment/Data/IMDB Reviews/IMDB Data'
+# class DataLocation():
+#     def __init__(self):
+#         self.dECMT = r"..\Data\sentiment\Data\IMDB Reviews\IMDB Data"
+#         self.lenovo = '../Data/sentiment/Data/IMDB Reviews/IMDB Data'
 
 
 # Compute train and warmup steps from batch size
@@ -422,9 +342,18 @@ def getOutputDir(DATA_LOCATION_RELATIVE_TO_CODE, startDate):
 
 def main():
     # %% Select location of data directory based on Manchine
-    dataLocation = DataLocation()
+    print('')
+    imdbDataPath = params.inputDirectoryIMDBData
+    print(f'{imdbDataPath}')
+    myCWD = Path.cwd()
+    print(f'cwd = {myCWD}')
+    imdbRelPath= Path(imdbDataPath).relative_to(myCWD)
+    print(f'imdb data relative path  = {imdbRelPath}')
+
+
+    # dataLocation = DataLocation()
     dataVersionAppendix = DataVersionAppendix()
-    DATA_LOCATION_RELATIVE_TO_CODE = dataLocation.lenovo
+    DATA_LOCATION_RELATIVE_TO_CODE = imdbRelPath
     DATA_VERSION_APPENDIX = dataVersionAppendix.shortVersion
     READ_FROM_SOURCE = False  # True #False
     # %% =================================================
