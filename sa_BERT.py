@@ -12,7 +12,7 @@ import bert
 from bert import run_classifier
 from bert import optimization
 from bert import tokenization
-import data4SAandBERT
+from data4SAandBERT import *
 import tensorflow as tf
 import tensorflow_hub as hub
 from pathlib import Path, PurePath
@@ -22,6 +22,12 @@ import cProfile
 import timeit
 from tensorflow import keras
 import argparse
+import json
+import numpy as np
+
+DIR_OF_RT_DATA ="RT_Sentiment"
+DIR_OF_IMDB_DATA = "IMDB Reviews"
+
 
 parser = argparse.ArgumentParser(description="Simple")
 parser.add_argument("--inDirIMDB", action="store", dest="inputDirectoryIMDBData", type=str,
@@ -39,10 +45,28 @@ print(params)
 # 'echo %cd% # under windows'
 # get_ipython().run_line_magic('!pwd', '')
 
-
+#%% JSON encoder
+class NumpyEncoder(json.JSONEncoder):
+    """ Special json encoder for numpy types """
+    def default(self, obj):
+        if isinstance(obj, (np.int_, np.intc, np.intp, np.int8,
+            np.int16, np.int32, np.int64, np.uint8,
+            np.uint16, np.uint32, np.uint64)):
+            return int(obj)
+        elif isinstance(obj, (np.float_, np.float16, np.float32,
+            np.float64)):
+            return float(obj)
+        elif isinstance(obj,(np.ndarray,)): #### This is the fix
+            return obj.tolist()
+        return json.JSONEncoder.default(self, obj)
 # %% Get examples
 
 def getExamples(df, dataInfo, guid=None, text_b=None):
+    cols = df.columns.to_list()
+    if any(x for x in cols if 'pol' == x):
+        dataInfo.LABEL_COLUMN = 'pol'
+    else: dataInfo.LABEL_COLUMN = 'polarity'
+    print(f'cols: {cols}')
     def processLine(l):
         text_a = l[dataInfo.DATA_COLUMN]
         labelColumn = l[dataInfo.LABEL_COLUMN]
@@ -281,7 +305,7 @@ def getTFEstimatorParameters(OUTPUT_DIR, SAVE_SUMMARY_STEPS, SAVE_CHECKPOINTS_ST
 
 class DataInfo:
     def __init__(self):
-        self.LABEL_COLUMN = 'polarity'
+        self.LABEL_COLUMN = 'pol' # 'polarity'
         self.DATA_COLUMN = 'text'
         self.READ_FROM_SOURCE = False  # True
         self.BERT_MODEL_HUB = "https://tfhub.dev/google/bert_uncased_L-12_H-768_A-12/1"
@@ -343,8 +367,16 @@ def getOutputDir(DATA_LOCATION_RELATIVE_TO_CODE, startDate):
 
 def main():
     # %% Select location of data directory based on Manchine
+    inputInfo2Save = {}
+    dataVersionAppendix = DataVersionAppendix()
+    DATA_VERSION_APPENDIX = dataVersionAppendix.shortVersion # dataVersionAppendix.shortVersion
+    READ_FROM_SOURCE = True  # True #False
     print('')
-    imdbDataPath = params.inputDirectoryIMDBData
+
+    imdbDataPath = str(Path(params.inputDirectoryIMDBData) / DIR_OF_IMDB_DATA)
+    rtDataPath = str(Path(params.inputDirectoryIMDBData) / DIR_OF_RT_DATA)
+    inputInfo2Save['inputPath'] = params.inputDirectoryIMDBData
+
     print(f'{imdbDataPath}')
     myCWD = Path.cwd()
     print(f'cwd = {myCWD}')
@@ -352,16 +384,15 @@ def main():
     # imdbRelPath= Path(imdbDataPath).relative_to(myCWD)
     # print(PurePath(imdbDataPath).relative_to(myCWD))
     imdbRelPath = os.path.relpath(imdbDataPath, myCWD)
+    rtRelPath = os.path.relpath(rtDataPath, myCWD)
+    DATA_LOCATION_RELATIVE_TO_CODE = imdbRelPath
     print(f'imdb data relative path  = {imdbRelPath}')
     # dataLocation = DataLocation()
-    dataVersionAppendix = DataVersionAppendix()
-    DATA_LOCATION_RELATIVE_TO_CODE = imdbRelPath
-    DATA_VERSION_APPENDIX = dataVersionAppendix.shortVersion
-    READ_FROM_SOURCE = False  # True #False
     # %% =================================================
     DATA_INFO = DataInfo()
     PROCESSING_INFO = ProcessingInfo()
     # %% Read Data
+    inputInfo2Save['timeOfRun'] = PROCESSING_INFO.timeStr
     current_dir = Path(__file__).parent
     print(f"Working  directory: {current_dir}")
     print(f'IMDB data column: {DATA_INFO.DATA_COLUMN}')
@@ -380,14 +411,14 @@ def main():
     # load_directory_data(train_dir_Imdb)
     train_dir_Imdb = os._fspath(train_dir_ImdbP)
     print(f'Preparing to read from: {train_dir_Imdb}')
-    imdbTrainData = data4SAandBERT.readImdbData(train_dir_Imdb, readFromSource=DATA_INFO.READ_FROM_SOURCE)
+    imdbTrainData = readImdbData(train_dir_Imdb, readFromSource=DATA_INFO.READ_FROM_SOURCE)
     print('Creating examples from train data')
     # %%
     # test_dir_Imdb = 'Data/sentiment/Data/IMDB Reviews/IMDB Data/test/'
     # Other: Test Data
     test_dir_Imdb = train_dir_ImdbP = Path(DATA_LOCATION_RELATIVE_TO_CODE) / (
             'test' + DATA_VERSION_APPENDIX)  # 'Data/sentiment/Data/IMDB Reviews/IMDB Data/test_short/'
-    imdbTestData = data4SAandBERT.readImdbData(test_dir_Imdb, readFromSource=DATA_INFO.READ_FROM_SOURCE)
+    imdbTestData = readImdbData(test_dir_Imdb, readFromSource=DATA_INFO.READ_FROM_SOURCE)
     print('Creating examples from test data')
 
     # %% Process data
@@ -398,6 +429,7 @@ def main():
     testInputExamples = getExamples(imdbTestData, DATA_INFO)
     print('Creating tokenizer')
     tokenizer = create_tokenizer_from_hub_module(DATA_INFO)
+    print('Tokenizer Created')
     tokenizingExample(tokenizer)
     # %% Getting Features from test and training data
 
@@ -453,11 +485,22 @@ def main():
         seq_length=PROCESSING_INFO.MAX_SEQ_LENGTH,
         is_training=False,
         drop_remainder=False)
-
+    print(f'Evaluating trained estimator')
+    current_time = time.time()
     evaluationResults = estimator.evaluate(input_fn=test_input_fn, steps=None)
+    print("Evaluation took time ", time.time() - current_time)
+    inputInfo2Save['evaluation'] = evaluationResults
     print(evaluationResults)
     print('Finished All')
-
+    # import json
+    infoFileName = 'info' + '_' +  PROCESSING_INFO.timeStr + '.json'
+    infoFileName = str(Path(myCWD) / infoFileName)
+    print(f'Writing info to file {infoFileName}')
+    infoJsonStr=json.dumps(inputInfo2Save, sort_keys=True, indent=4,cls=NumpyEncoder)
+    with open(infoFileName, 'w') as f:
+        f.write(infoJsonStr)
+        # json.dump(infoJsonStr,f)
+    print(f'*** Finished !!! ***')
 
 # %% MAIN
 if __name__ == "__main__":
