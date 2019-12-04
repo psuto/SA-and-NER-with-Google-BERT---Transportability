@@ -315,7 +315,7 @@ class DataInfo:
 
 class DataVersionAppendix:
     def __init__(self):
-        self.normal = ""
+        self.normalVersion = ""
         self.shortVersion = "_short"
 
 
@@ -369,7 +369,7 @@ def main():
     # %% Select location of data directory based on Manchine
     inputInfo2Save = {}
     dataVersionAppendix = DataVersionAppendix()
-    DATA_VERSION_APPENDIX = dataVersionAppendix.shortVersion # dataVersionAppendix.shortVersion
+    DATA_VERSION_APPENDIX = dataVersionAppendix.normalVersion # dataVersionAppendix.shortVersion
     READ_FROM_SOURCE = True  # True #False
     print('')
 
@@ -384,7 +384,6 @@ def main():
     # imdbRelPath= Path(imdbDataPath).relative_to(myCWD)
     # print(PurePath(imdbDataPath).relative_to(myCWD))
     imdbRelPath = os.path.relpath(imdbDataPath, myCWD)
-    rtRelPath = os.path.relpath(rtDataPath, myCWD)
     DATA_LOCATION_RELATIVE_TO_CODE = imdbRelPath
     print(f'imdb data relative path  = {imdbRelPath}')
     # dataLocation = DataLocation()
@@ -420,6 +419,9 @@ def main():
             'test' + DATA_VERSION_APPENDIX)  # 'Data/sentiment/Data/IMDB Reviews/IMDB Data/test_short/'
     imdbTestData = readImdbData(test_dir_Imdb, readFromSource=DATA_INFO.READ_FROM_SOURCE)
     print('Creating examples from test data')
+
+    #%%RT Data
+    rtRelPath = os.path.relpath(rtDataPath, myCWD)
 
     # %% Process data
     print('Finished reading imdb_data ')
@@ -490,6 +492,7 @@ def main():
     evaluationResults = estimator.evaluate(input_fn=test_input_fn, steps=None)
     print("Evaluation took time ", time.time() - current_time)
     inputInfo2Save['evaluation'] = evaluationResults
+    inputInfo2Save['DATA_VERSION_APPENDIX'] = DATA_VERSION_APPENDIX
     print(evaluationResults)
     print('Finished All')
     # import json
