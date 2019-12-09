@@ -12,7 +12,7 @@ import bert
 from bert import run_classifier
 from bert import optimization
 from bert import tokenization
-from .data4SAandBERT import *
+import data4SAandBERT
 
 
 import tensorflow as tf
@@ -26,11 +26,11 @@ from tensorflow import keras
 import argparse
 import json
 import numpy as np
+import pandas as pd
 
 
-
-databaseName2Info ={'imdb':{'dir':"IMDB Reviews"},
-                   'rt':{'dir':'IMDB Reviews'}
+databaseName2Info ={'imdb':{'dir':"IMDB Reviews",'fnc':data4SAandBERT.readImdbData},
+                   'rt':{'dir':"RT_Sentiment",'fnc':data4SAandBERT.readImdbData}
                    }
 
 DIR_OF_RT_DATA ="RT_Sentiment"
@@ -443,18 +443,47 @@ def getIMDBData(DATA_INFO, DATA_LOCATION_RELATIVE_TO_CODE, DATA_VERSION_APPENDIX
     print('Creating examples from test data')
     return imdbTestData, imdbTrainData
 
+
+def getIMDBData(DATA_INFO, DATA_LOCATION_RELATIVE_TO_CODE, DATA_VERSION_APPENDIX,readDBFnc):
+    train_dir_ImdbP = Path(DATA_LOCATION_RELATIVE_TO_CODE) / ('train' + DATA_VERSION_APPENDIX)
+    # train_dir_Imdb = r'Data\sentiment\Data\IMDB Reviews\IMDB Data\train'
+    # train_dir_Imdb_short = 'Data/sentiment/Data/IMDB Reviews/IMDB Data/train_short/'
+    # load_directory_data(train_dir_Imdb)
+    train_dir_Imdb = os._fspath(train_dir_ImdbP)
+    print(f'Preparing to read from: {train_dir_Imdb}')
+    imdbTrainData = data4SAandBERT.readImdbData(train_dir_Imdb, readFromSource=DATA_INFO.READ_FROM_SOURCE)
+    print('Creating examples from train data')
+    # %%
+    # test_dir_Imdb = 'Data/sentiment/Data/IMDB Reviews/IMDB Data/test/'
+    # Other: Test Data
+    test_dir_Imdb = train_dir_ImdbP = Path(DATA_LOCATION_RELATIVE_TO_CODE) / (
+            'test' + DATA_VERSION_APPENDIX)  # 'Data/sentiment/Data/IMDB Reviews/IMDB Data/test_short/'
+    imdbTestData = readDBFnc(test_dir_Imdb, readFromSource=DATA_INFO.READ_FROM_SOURCE)
+    print('Creating examples from test data')
+    return imdbTestData, imdbTrainData
+
 def main():
     # %% Select location of data directory based on Manchine
-    data2Use = ['imdb']
+    data2Use2Train = ['imdb']  # 'imdb', 'rt'
+    data2Use2Test = ['imdb']
     inputInfo2Save = {}
     dataVersionAppendix = DataVersionAppendix()
     DATA_VERSION_APPENDIX = dataVersionAppendix.shortVersion # dataVersionAppendix.shortVersion
     READ_FROM_SOURCE = True  # True #False
     print('')
     vals = databaseName2Info.keys()
-    for currentDataName in data2Use:
-        currentDBDir = databaseName2Info[currentDataName]
-        PROCESSING_INFO, evaluationResults, myCWD = getPerformanceMeassure(DATA_VERSION_APPENDIX, inputInfo2Save,currentDataName,currentDBDir)
+    pdPerformance = pd.DataFrame()
+    for currentTrainDataName in data2Use2Train:
+        currentTrainDBDir = databaseName2Info[currentTrainDataName]
+        for currentTestDataName in data2Use2Train:
+            currentTestDBDir = databaseName2Info[currentTestDataName]
+            PROCESSING_INFO, evaluationResults, myCWD = getPerformanceMeassure(DATA_VERSION_APPENDIX, inputInfo2Save,currentTrainDataName,currentTrainDBDir)
+            evaluationResults['train']=currentTrainDataName
+            evaluationResults['test']=currentTestDataName
+            pdPerformance.append(evaluationResults,ignore_index=True)
+            print(f'**** Train DB:{currentTrainDataName}, testDB:{currentTestDataName}')
+
+        print(f'Train DB:{currentTrainDataName}')
 
     inputInfo2Save['evaluation'] = evaluationResults
     inputInfo2Save['DATA_VERSION_APPENDIX'] = DATA_VERSION_APPENDIX
@@ -473,6 +502,7 @@ def main():
 
 def getPerformanceMeassure(DATA_VERSION_APPENDIX, inputInfo2Save,currentDataName,currentDBDirDict):
     currentDBDir = currentDBDirDict['dir']
+    readDBFnc = currentDBDirDict['fnc']
     imdbDataPath = str(Path(params.inputDirectoryIMDBData) / currentDBDir)
     inputInfo2Save['inputPath'] = params.inputDirectoryIMDBData
     print(f'{imdbDataPath}')
@@ -502,7 +532,7 @@ def getPerformanceMeassure(DATA_VERSION_APPENDIX, inputInfo2Save,currentDataName
     # Todo: Convert Date + Time to String
     startDateString = ""
     OUTPUT_DIR = getOutputDir(DATA_LOCATION_RELATIVE_TO_CODE, PROCESSING_INFO.time)
-    imdbTestData, imdbTrainData = getIMDBData(DATA_INFO, DATA_LOCATION_RELATIVE_TO_CODE, DATA_VERSION_APPENDIX)
+    imdbTestData, imdbTrainData = getIMDBData(DATA_INFO, DATA_LOCATION_RELATIVE_TO_CODE, DATA_VERSION_APPENDIX, readDBFnc)
     # %% Process data
     print('Finished reading imdb_data ')
     print('Creating examples from train data')
