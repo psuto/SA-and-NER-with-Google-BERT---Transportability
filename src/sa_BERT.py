@@ -472,7 +472,7 @@ def main():
     READ_FROM_SOURCE = True  # True #False
     print('')
     vals = databaseName2Info.keys()
-    pdPerformance = pd.DataFrame()
+    pdPerformance = pd.DataFrame(columns=['auc', 'eval_accuracy', 'f1_score', 'false_negatives', 'false_positives', 'loss', 'precision', 'recall', 'true_negatives', 'true_positives', 'global_step', 'train', 'test'])
     for currentTrainDataName in data2Use2Train:
         currentTrainDBDir = databaseName2Info[currentTrainDataName]
         for currentTestDataName in data2Use2Train:
