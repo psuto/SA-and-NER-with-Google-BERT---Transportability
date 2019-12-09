@@ -12,7 +12,9 @@ import bert
 from bert import run_classifier
 from bert import optimization
 from bert import tokenization
-from data4SAandBERT import *
+from .data4SAandBERT import *
+
+
 import tensorflow as tf
 import tensorflow_hub as hub
 from pathlib import Path, PurePath
@@ -24,6 +26,12 @@ from tensorflow import keras
 import argparse
 import json
 import numpy as np
+
+
+
+databaseName2Info ={'imdb':{'dir':"IMDB Reviews"},
+                   'rt':{'dir':'IMDB Reviews'}
+                   }
 
 DIR_OF_RT_DATA ="RT_Sentiment"
 DIR_OF_IMDB_DATA = "IMDB Reviews"
@@ -365,18 +373,108 @@ def getOutputDir(DATA_LOCATION_RELATIVE_TO_CODE, startDate):
     return str(outDir)
 
 
+def trainAndEstimate(DATA_INFO, OUTPUT_DIR, PROCESSING_INFO, testInputExamples, tokenizer, trainInputExamples):
+    train_features = createFeatures(trainInputExamples, tokenizer, DATA_INFO.CASE_LABEL_LIST, PROCESSING_INFO)
+    test_features = createFeatures(testInputExamples, tokenizer, DATA_INFO.CASE_LABEL_LIST, PROCESSING_INFO)
+    # %% Get Tensor Flow estimator parameters
+    # PROCESSING_INFO = ProcessingInfo()
+    trEstimatorParameters = getTFEstimatorParameters(OUTPUT_DIR, PROCESSING_INFO.SAVE_SUMMARY_STEPS,
+                                                     PROCESSING_INFO.SAVE_CHECKPOINTS_STEPS)
+    # %% Specify outpit directory and number of checkpoint steps to save
+    run_config = tf.estimator.RunConfig(
+        model_dir=OUTPUT_DIR,
+        save_summary_steps=PROCESSING_INFO.SAVE_SUMMARY_STEPS,
+        save_checkpoints_steps=PROCESSING_INFO.SAVE_CHECKPOINTS_STEPS)
+    # %% Finish
+    # %% Estimating number of steps (heuristics?)
+    # Todo: 191119 Check huristics in NumberOfStepsEstimator
+    numberOfStepsEstimator = NumberOfStepsEstimator(len(train_features), PROCESSING_INFO.BATCH_SIZE,
+                                                    PROCESSING_INFO.NUM_TRAIN_EPOCHS, PROCESSING_INFO.WARMUP_PROPORTION)
+    # %% Estimator setting
+    model_fn = model_fn_builder(
+        num_labels=len(DATA_INFO.CASE_LABEL_LIST),
+        learning_rate=PROCESSING_INFO.LEARNING_RATE,
+        num_train_steps=numberOfStepsEstimator.getNumOfTrainSteps(),  # num_train_steps,
+        num_warmup_steps=numberOfStepsEstimator.getNumOfWarmUpSteps(), BERT_MODEL_HUB=DATA_INFO.BERT_MODEL_HUB)
+    estimator = tf.estimator.Estimator(
+        model_fn=model_fn,
+        config=run_config,
+        params={"batch_size": PROCESSING_INFO.BATCH_SIZE})
+    # %% Create an input function for training. drop_remainder = True for using TPUs.
+    train_input_fn = bert.run_classifier.input_fn_builder(
+        features=train_features,
+        seq_length=PROCESSING_INFO.MAX_SEQ_LENGTH,
+        is_training=True,
+        drop_remainder=False)
+    # %% Train estimator
+    print(f'Beginning Training!')
+    current_time = time.time()
+    # timeit.timeit(estimator.train(input_fn=train_input_fn, max_steps=numberOfStepsEstimator.getNumOfTrainSteps()),
+    estimator.train(input_fn=train_input_fn, max_steps=numberOfStepsEstimator.getNumOfTrainSteps())
+    print("Training took time ", time.time() - current_time)
+    # %%  Evaluating trained estimator
+    test_input_fn = run_classifier.input_fn_builder(
+        features=test_features,
+        seq_length=PROCESSING_INFO.MAX_SEQ_LENGTH,
+        is_training=False,
+        drop_remainder=False)
+    print(f'Evaluating trained estimator')
+    current_time = time.time()
+    evaluationResults = estimator.evaluate(input_fn=test_input_fn, steps=None)
+    print("Evaluation took time ", time.time() - current_time)
+    return evaluationResults
+
+
+def getIMDBData(DATA_INFO, DATA_LOCATION_RELATIVE_TO_CODE, DATA_VERSION_APPENDIX):
+    train_dir_ImdbP = Path(DATA_LOCATION_RELATIVE_TO_CODE) / ('train' + DATA_VERSION_APPENDIX)
+    # train_dir_Imdb = r'Data\sentiment\Data\IMDB Reviews\IMDB Data\train'
+    # train_dir_Imdb_short = 'Data/sentiment/Data/IMDB Reviews/IMDB Data/train_short/'
+    # load_directory_data(train_dir_Imdb)
+    train_dir_Imdb = os._fspath(train_dir_ImdbP)
+    print(f'Preparing to read from: {train_dir_Imdb}')
+    imdbTrainData = data4SAandBERT.readImdbData(train_dir_Imdb, readFromSource=DATA_INFO.READ_FROM_SOURCE)
+    print('Creating examples from train data')
+    # %%
+    # test_dir_Imdb = 'Data/sentiment/Data/IMDB Reviews/IMDB Data/test/'
+    # Other: Test Data
+    test_dir_Imdb = train_dir_ImdbP = Path(DATA_LOCATION_RELATIVE_TO_CODE) / (
+            'test' + DATA_VERSION_APPENDIX)  # 'Data/sentiment/Data/IMDB Reviews/IMDB Data/test_short/'
+    imdbTestData = data4SAandBERT.readImdbData(test_dir_Imdb, readFromSource=DATA_INFO.READ_FROM_SOURCE)
+    print('Creating examples from test data')
+    return imdbTestData, imdbTrainData
+
 def main():
     # %% Select location of data directory based on Manchine
+    data2Use = ['imdb']
     inputInfo2Save = {}
     dataVersionAppendix = DataVersionAppendix()
-    DATA_VERSION_APPENDIX = dataVersionAppendix.normalVersion # dataVersionAppendix.shortVersion
+    DATA_VERSION_APPENDIX = dataVersionAppendix.shortVersion # dataVersionAppendix.shortVersion
     READ_FROM_SOURCE = True  # True #False
     print('')
+    vals = databaseName2Info.keys()
+    for currentDataName in data2Use:
+        currentDBDir = databaseName2Info[currentDataName]
+        PROCESSING_INFO, evaluationResults, myCWD = getPerformanceMeassure(DATA_VERSION_APPENDIX, inputInfo2Save,currentDataName,currentDBDir)
 
-    imdbDataPath = str(Path(params.inputDirectoryIMDBData) / DIR_OF_IMDB_DATA)
-    rtDataPath = str(Path(params.inputDirectoryIMDBData) / DIR_OF_RT_DATA)
+    inputInfo2Save['evaluation'] = evaluationResults
+    inputInfo2Save['DATA_VERSION_APPENDIX'] = DATA_VERSION_APPENDIX
+    print(evaluationResults)
+    print('Finished All')
+    # import json
+    infoFileName = 'info'+ DATA_VERSION_APPENDIX+ '_' +  PROCESSING_INFO.timeStr + '.json'
+    infoFileName = str(Path(myCWD) / infoFileName)
+    print(f'Writing info to file {infoFileName}')
+    infoJsonStr=json.dumps(inputInfo2Save, sort_keys=True, indent=4,cls=NumpyEncoder)
+    with open(infoFileName, 'w') as f:
+        f.write(infoJsonStr)
+        # json.dump(infoJsonStr,f)
+    print(f'*** Finished !!! ***')
+
+
+def getPerformanceMeassure(DATA_VERSION_APPENDIX, inputInfo2Save,currentDataName,currentDBDirDict):
+    currentDBDir = currentDBDirDict['dir']
+    imdbDataPath = str(Path(params.inputDirectoryIMDBData) / currentDBDir)
     inputInfo2Save['inputPath'] = params.inputDirectoryIMDBData
-
     print(f'{imdbDataPath}')
     myCWD = Path.cwd()
     print(f'cwd = {myCWD}')
@@ -404,28 +502,11 @@ def main():
     # Todo: Convert Date + Time to String
     startDateString = ""
     OUTPUT_DIR = getOutputDir(DATA_LOCATION_RELATIVE_TO_CODE, PROCESSING_INFO.time)
-    train_dir_ImdbP = Path(DATA_LOCATION_RELATIVE_TO_CODE) / ('train' + DATA_VERSION_APPENDIX)
-    # train_dir_Imdb = r'Data\sentiment\Data\IMDB Reviews\IMDB Data\train'
-    # train_dir_Imdb_short = 'Data/sentiment/Data/IMDB Reviews/IMDB Data/train_short/'
-    # load_directory_data(train_dir_Imdb)
-    train_dir_Imdb = os._fspath(train_dir_ImdbP)
-    print(f'Preparing to read from: {train_dir_Imdb}')
-    imdbTrainData = readImdbData(train_dir_Imdb, readFromSource=DATA_INFO.READ_FROM_SOURCE)
-    print('Creating examples from train data')
-    # %%
-    # test_dir_Imdb = 'Data/sentiment/Data/IMDB Reviews/IMDB Data/test/'
-    # Other: Test Data
-    test_dir_Imdb = train_dir_ImdbP = Path(DATA_LOCATION_RELATIVE_TO_CODE) / (
-            'test' + DATA_VERSION_APPENDIX)  # 'Data/sentiment/Data/IMDB Reviews/IMDB Data/test_short/'
-    imdbTestData = readImdbData(test_dir_Imdb, readFromSource=DATA_INFO.READ_FROM_SOURCE)
-    print('Creating examples from test data')
-
-    #%%RT Data
-    rtRelPath = os.path.relpath(rtDataPath, myCWD)
-
+    imdbTestData, imdbTrainData = getIMDBData(DATA_INFO, DATA_LOCATION_RELATIVE_TO_CODE, DATA_VERSION_APPENDIX)
     # %% Process data
     print('Finished reading imdb_data ')
     print('Creating examples from train data')
+    #
     trainInputExamples = getExamples(imdbTrainData, DATA_INFO)
     print('Creating examples from test data')
     testInputExamples = getExamples(imdbTestData, DATA_INFO)
@@ -434,76 +515,11 @@ def main():
     print('Tokenizer Created')
     tokenizingExample(tokenizer)
     # %% Getting Features from test and training data
-
     # Convert our train and test features to InputFeatures that BERT understands.
-    train_features = createFeatures(trainInputExamples, tokenizer, DATA_INFO.CASE_LABEL_LIST, PROCESSING_INFO)
-    test_features = createFeatures(testInputExamples, tokenizer, DATA_INFO.CASE_LABEL_LIST, PROCESSING_INFO)
-    # %% Get Tensor Flow estimator parameters
-    # PROCESSING_INFO = ProcessingInfo()
-    trEstimatorParameters = getTFEstimatorParameters(OUTPUT_DIR, PROCESSING_INFO.SAVE_SUMMARY_STEPS,
-                                                     PROCESSING_INFO.SAVE_CHECKPOINTS_STEPS)
+    evaluationResults = trainAndEstimate(DATA_INFO, OUTPUT_DIR, PROCESSING_INFO, testInputExamples, tokenizer,
+                                         trainInputExamples)
+    return PROCESSING_INFO, evaluationResults, myCWD
 
-    # %% Specify outpit directory and number of checkpoint steps to save
-    run_config = tf.estimator.RunConfig(
-        model_dir=OUTPUT_DIR,
-        save_summary_steps=PROCESSING_INFO.SAVE_SUMMARY_STEPS,
-        save_checkpoints_steps=PROCESSING_INFO.SAVE_CHECKPOINTS_STEPS)
-
-    # %% Finish
-    # %% Estimating number of steps (heuristics?)
-    # Todo: 191119 Check huristics in NumberOfStepsEstimator
-    numberOfStepsEstimator = NumberOfStepsEstimator(len(train_features), PROCESSING_INFO.BATCH_SIZE,
-                                                    PROCESSING_INFO.NUM_TRAIN_EPOCHS, PROCESSING_INFO.WARMUP_PROPORTION)
-
-    # %% Estimator setting
-    model_fn = model_fn_builder(
-        num_labels=len(DATA_INFO.CASE_LABEL_LIST),
-        learning_rate=PROCESSING_INFO.LEARNING_RATE,
-        num_train_steps=numberOfStepsEstimator.getNumOfTrainSteps(),  # num_train_steps,
-        num_warmup_steps=numberOfStepsEstimator.getNumOfWarmUpSteps(), BERT_MODEL_HUB=DATA_INFO.BERT_MODEL_HUB)
-
-    estimator = tf.estimator.Estimator(
-        model_fn=model_fn,
-        config=run_config,
-        params={"batch_size": PROCESSING_INFO.BATCH_SIZE})
-
-    # %% Create an input function for training. drop_remainder = True for using TPUs.
-    train_input_fn = bert.run_classifier.input_fn_builder(
-        features=train_features,
-        seq_length=PROCESSING_INFO.MAX_SEQ_LENGTH,
-        is_training=True,
-        drop_remainder=False)
-
-    # %% Train estimator
-    print(f'Beginning Training!')
-    current_time = time.time()
-    # timeit.timeit(estimator.train(input_fn=train_input_fn, max_steps=numberOfStepsEstimator.getNumOfTrainSteps()),
-    estimator.train(input_fn=train_input_fn, max_steps=numberOfStepsEstimator.getNumOfTrainSteps())
-    print("Training took time ", time.time() - current_time)
-
-    # %%  Evaluating trained estimator
-    test_input_fn = run_classifier.input_fn_builder(
-        features=test_features,
-        seq_length=PROCESSING_INFO.MAX_SEQ_LENGTH,
-        is_training=False,
-        drop_remainder=False)
-    print(f'Evaluating trained estimator')
-    current_time = time.time()
-    evaluationResults = estimator.evaluate(input_fn=test_input_fn, steps=None)
-    print("Evaluation took time ", time.time() - current_time)
-    inputInfo2Save['evaluation'] = evaluationResults
-    inputInfo2Save['DATA_VERSION_APPENDIX'] = DATA_VERSION_APPENDIX
-    print(evaluationResults)
-    print('Finished All')
-    # import json
-    infoFileName = 'info' + '_' +  PROCESSING_INFO.timeStr + '.json'
-    infoFileName = str(Path(myCWD) / infoFileName)
-    print(f'Writing info to file {infoFileName}')
-    infoJsonStr=json.dumps(inputInfo2Save, sort_keys=True, indent=4,cls=NumpyEncoder)
-    with open(infoFileName, 'w') as f:
-        f.write(infoJsonStr)
-        # json.dump(infoJsonStr,f)
-    print(f'*** Finished !!! ***')
 
 # %% MAIN
 if __name__ == "__main__":
