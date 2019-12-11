@@ -14,7 +14,6 @@ from bert import optimization
 from bert import tokenization
 import data4SAandBERT
 
-
 import tensorflow as tf
 import tensorflow_hub as hub
 from pathlib import Path, PurePath
@@ -27,57 +26,108 @@ import argparse
 import json
 import numpy as np
 import pandas as pd
+import logging
+
+# import pprint
+
+databaseName2Info = {'imdb': {'dir': "IMDB Reviews",
+                              'fnc': data4SAandBERT.readIMDBData,
+                              'READ_FROM_SOURCE': True,
+                              'dataInfo': {
+                                  'self.LABEL_COLUMN': 'pol',
+                                  'DATA_COLUMN': 'text',
+                                  'CASE_LABEL_LIST': [0, 1]}
+                              },
+                     'rt': {'dir': "RT_Sentiment",
+                            'fnc': data4SAandBERT.readRTData},
+                     'READ_FROM_SOURCE': True,
+                     'dataInfo': {
+                         'self.LABEL_COLUMN': '',
+                         'DATA_COLUMN': '',
+                         'CASE_LABEL_LIST': ''
+                     }
+
+                     }
+
+BERT_MODEL_HUB = "https://tfhub.dev/google/bert_uncased_L-12_H-768_A-12/1"
 
 
-databaseName2Info ={'imdb':{'dir':"IMDB Reviews",'fnc':data4SAandBERT.readImdbData},
-                   'rt':{'dir':"RT_Sentiment",'fnc':data4SAandBERT.readImdbData}
-                   }
+# %%
+class ProcessingInfo():
+    def __init__(self):
+        self.time = time
+        self.timeStr = time.strftime("%Y-%m-%d__%H-%M-%S")
+        self.dateTimeformatingStr = "%Y-%m-%d__%H-%M-%S"
+        self.BATCH_SIZE = 32
+        self.LEARNING_RATE = 2e-5
+        self.NUM_TRAIN_EPOCHS = 3.0
+        # Warmup is a period of time where hte learning rate
+        # is small and gradually increases--usually helps training.
+        self.WARMUP_PROPORTION = 0.1
+        # Model configs
+        self.SAVE_CHECKPOINTS_STEPS = 500
+        self.SAVE_SUMMARY_STEPS = 100
+        self.MAX_SEQ_LENGTH = 128
 
-DIR_OF_RT_DATA ="RT_Sentiment"
-DIR_OF_IMDB_DATA = "IMDB Reviews"
 
-
+# %%
 parser = argparse.ArgumentParser(description="Simple")
 parser.add_argument("--inDirIMDB", action="store", dest="inputDirectoryIMDBData", type=str,
                     default="Directory path needs to be specified",
                     help="file path to file with simulation output")
 
+parser.add_argument("--readDS", action="store", dest="readDataSource", type=bool, default=True,
+                    help="whether to read original source of data or consolidated table in csv file. Values:True, False.")
+
 params = parser.parse_args()  # ['--fSimul="oooooooooooooooooo"'],'--fWF="xxxxxxxxxxxxxxxxxxxx"'
 print(params)
 
+# Create a custom logger
+# %% Logger Setting
+logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
 
-# get_ipython().system('pwd')
+console_log_level = logging.INFO  # default WARNING
+file_log_level = logging.INFO  # default ERROR
+
+logger = logging.getLogger(__name__)
+
+# Create handlers
+c_handler = logging.StreamHandler()
+f_handler = logging.FileHandler('file.log')
+c_handler.setLevel(console_log_level)
+f_handler.setLevel(file_log_level)
+
+# Create formatters and add it to handlers
+c_format = logging.Formatter('%(name)s - %(levelname)s - %(message)s')
+f_format = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s -% (message)s')
+c_handler.setFormatter(c_format)
+f_handler.setFormatter(f_format)
+
+# Add handlers to the logger
+logger.addHandler(c_handler)
+logger.addHandler(f_handler)
 
 
-# !pwd # under linux/mac
-# 'echo %cd% # under windows'
-# get_ipython().run_line_magic('!pwd', '')
+# %%
+class DataVersionAppendix:
+    def __init__(self):
+        self.normalVersion = ""
+        self.shortVersion = "_short"
 
-#%% JSON encoder
-class NumpyEncoder(json.JSONEncoder):
-    """ Special json encoder for numpy types """
-    def default(self, obj):
-        if isinstance(obj, (np.int_, np.intc, np.intp, np.int8,
-            np.int16, np.int32, np.int64, np.uint8,
-            np.uint16, np.uint32, np.uint64)):
-            return int(obj)
-        elif isinstance(obj, (np.float_, np.float16, np.float32,
-            np.float64)):
-            return float(obj)
-        elif isinstance(obj,(np.ndarray,)): #### This is the fix
-            return obj.tolist()
-        return json.JSONEncoder.default(self, obj)
+
 # %% Get examples
 
 def getExamples(df, dataInfo, guid=None, text_b=None):
     cols = df.columns.to_list()
     if any(x for x in cols if 'pol' == x):
-        dataInfo.LABEL_COLUMN = 'pol'
-    else: dataInfo.LABEL_COLUMN = 'polarity'
+        labelColName = 'pol'
+    else:
+        labelColName = 'polarity'
     print(f'cols: {cols}')
+
     def processLine(l):
-        text_a = l[dataInfo.DATA_COLUMN]
-        labelColumn = l[dataInfo.LABEL_COLUMN]
+        text_a = l[dataInfo['dataInfo']['DATA_COLUMN']]
+        labelColumn = l[labelColName]
         res = bert.run_classifier.InputExample(guid=None,
                                                # Globally unique ID for bookkeeping, unused in this example
                                                text_a=text_a,
@@ -94,15 +144,19 @@ def getExamples(df, dataInfo, guid=None, text_b=None):
     return (inputExamples)
 
 
-# %%  BERT tokenizer
+# %% MAIN
+def readData(inputDir, databaseName2Info, dbName, dataVersionAppendix, readFromSource=True):
+    info = databaseName2Info[dbName]
+    readDBFnc = info['fnc']
+    trainDB, testDB = readDBFnc(inputDir, info, databaseName2Info, dataVersionAppendix, readFromSource)
+    return trainDB, testDB
 
-# This is a path to an uncased (all lowercase) version of BERT
 
-
+# %%
 def create_tokenizer_from_hub_module(dataInfo):
     """Get the vocab file and casing info from the Hub module."""
     with tf.Graph().as_default():
-        bert_module = hub.Module(dataInfo.BERT_MODEL_HUB)
+        bert_module = hub.Module(BERT_MODEL_HUB)
         tokenization_info = bert_module(signature="tokenization_info", as_dict=True)
         with tf.Session() as sess:
             vocab_file, do_lower_case = sess.run([tokenization_info["vocab_file"],
@@ -112,22 +166,33 @@ def create_tokenizer_from_hub_module(dataInfo):
         vocab_file=vocab_file, do_lower_case=do_lower_case)
 
 
-def tokenizingExample(tokenizer):
-    tokenizedString = tokenizer.tokenize("This here's an example of using the BERT tokenizer")
-    print('Tokenized String')
-    print(tokenizedString)
+# %%
+def getOutputDir(DATA_LOCATION_RELATIVE_TO_CODE, startDate, infoTrain):
+    outDir1 = Path(DATA_LOCATION_RELATIVE_TO_CODE).absolute() / 'Output' / (
+            infoTrain['dir'] + '_Output_' + startDate.strftime("%Y-%m-%d__%H-%M-%S"))
+    outDir = outDir1.resolve()
+    outDir.mkdir(parents=True, exist_ok=True)
+    print(f"Output path {str(outDir)}")
+    return str(outDir)
 
 
-# %% Creating features
-def createFeatures(inputExamples, tokenizer, labelList, processingInfo):
-    features = bert.run_classifier.convert_examples_to_features(inputExamples, labelList,
-                                                                processingInfo.MAX_SEQ_LENGTH, tokenizer
-                                                                )
-    return (features)
+# %%
+def getTFEstimatorParameters(OUTPUT_DIR, SAVE_SUMMARY_STEPS, SAVE_CHECKPOINTS_STEPS):
+    """
+
+    :param OUTPUT_DIR:
+    :param SAVE_SUMMARY_STEPS:
+    :param SAVE_CHECKPOINTS_STEPS:
+    :return:
+    """
+    run_config = tf.estimator.RunConfig(
+        model_dir=OUTPUT_DIR,
+        save_summary_steps=SAVE_SUMMARY_STEPS,
+        save_checkpoints_steps=SAVE_CHECKPOINTS_STEPS)
+    return run_config
 
 
-# %%  create model
-
+# %%
 def create_model(is_predicting, input_ids, input_mask, segment_ids, labels,
                  num_labels, BERT_MODEL_HUB):
     """Creates a classification model."""
@@ -278,6 +343,7 @@ def model_fn_builder(num_labels, learning_rate, num_train_steps,
     return model_fn
 
 
+# %%
 class NumberOfStepsEstimator():
     def __init__(self, numTrainingFeatures, batchSize, numTrainingEpochs, warmupProportion, ):
         # Compute # train and warmup steps from batch size
@@ -294,112 +360,45 @@ class NumberOfStepsEstimator():
         return self.num_warmup_steps
 
 
-def getTFEstimatorParameters(OUTPUT_DIR, SAVE_SUMMARY_STEPS, SAVE_CHECKPOINTS_STEPS):
-    """
-
-    :param OUTPUT_DIR:
-    :param SAVE_SUMMARY_STEPS:
-    :param SAVE_CHECKPOINTS_STEPS:
-    :return:
-    """
-    run_config = tf.estimator.RunConfig(
-        model_dir=OUTPUT_DIR,
-        save_summary_steps=SAVE_SUMMARY_STEPS,
-        save_checkpoints_steps=SAVE_CHECKPOINTS_STEPS)
-    return run_config
+# %%
+def createFeatures(inputExamples, tokenizer, labelList, processingInfo):
+    features = bert.run_classifier.convert_examples_to_features(inputExamples, labelList,
+                                                                processingInfo.MAX_SEQ_LENGTH, tokenizer
+                                                                )
+    return (features)
 
 
-# %% Various run parameters
-
-class DataInfo:
-    def __init__(self):
-        self.LABEL_COLUMN = 'pol' # 'polarity'
-        self.DATA_COLUMN = 'text'
-        self.READ_FROM_SOURCE = False  # True
-        self.BERT_MODEL_HUB = "https://tfhub.dev/google/bert_uncased_L-12_H-768_A-12/1"
-        # label_list is the list of labels, i.e. True, False or 0, 1 or 'dog', 'cat'
-        self.CASE_LABEL_LIST = [0, 1]
-
-
-class DataVersionAppendix:
-    def __init__(self):
-        self.normalVersion = ""
-        self.shortVersion = "_short"
-
-
-# class DataLocation():
-#     def __init__(self):
-#         self.dECMT = r"..\Data\sentiment\Data\IMDB Reviews\IMDB Data"
-#         self.lenovo = '../Data/sentiment/Data/IMDB Reviews/IMDB Data'
-
-
-# Compute train and warmup steps from batch size
-# These hyperparameters are copied from this colab notebook (https://colab.sandbox.google.com/github/tensorflow/tpu/blob/master/tools/colab/bert_finetuning_with_cloud_tpus.ipynb)
-
-
-class ProcessingInfo():
-    def __init__(self):
-        self.time = time
-        self.timeStr = time.strftime("%Y-%m-%d__%H-%M-%S")
-        self.dateTimeformatingStr = "%Y-%m-%d__%H-%M-%S"
-        self.BATCH_SIZE = 32
-        self.LEARNING_RATE = 2e-5
-        self.NUM_TRAIN_EPOCHS = 3.0
-        # Warmup is a period of time where hte learning rate
-        # is small and gradually increases--usually helps training.
-        self.WARMUP_PROPORTION = 0.1
-        # Model configs
-        self.SAVE_CHECKPOINTS_STEPS = 500
-        self.SAVE_SUMMARY_STEPS = 100
-        self.MAX_SEQ_LENGTH = 128
-
-
-class FilesAndFoldersUtility:
-    def __init__(self, currentTime):
-        self.currentTime = currentTime
-        self.currntTimeString = ""
-
-
-# %% Create a classification model
-
-# %% Run main
-def getOutputDir(DATA_LOCATION_RELATIVE_TO_CODE, startDate):
-    outDir1 = Path(DATA_LOCATION_RELATIVE_TO_CODE).absolute() / 'Output' / (
-            'Output_' + startDate.strftime("%Y-%m-%d__%H-%M-%S"))
-    outDir = outDir1.resolve()
-    outDir.mkdir(parents=True, exist_ok=True)
-    print(f"Output path {str(outDir)}")
-    print("")
-    return str(outDir)
-
-
-def trainAndEstimate(DATA_INFO, OUTPUT_DIR, PROCESSING_INFO, testInputExamples, tokenizer, trainInputExamples):
-    train_features = createFeatures(trainInputExamples, tokenizer, DATA_INFO.CASE_LABEL_LIST, PROCESSING_INFO)
-    test_features = createFeatures(testInputExamples, tokenizer, DATA_INFO.CASE_LABEL_LIST, PROCESSING_INFO)
-    # %% Get Tensor Flow estimator parameters
-    # PROCESSING_INFO = ProcessingInfo()
+# %%
+def trainModel(currentTrainDataName, currentTrainData, infoTrain, OUTPUT_DIR):
+    PROCESSING_INFO = ProcessingInfo()
+    DATA_INFO = infoTrain['dataInfo']
+    trainInputExamples = getExamples(currentTrainData, infoTrain)
+    tokenizer = create_tokenizer_from_hub_module(BERT_MODEL_HUB)
+    train_features = createFeatures(trainInputExamples, tokenizer, DATA_INFO['CASE_LABEL_LIST'], PROCESSING_INFO)
     trEstimatorParameters = getTFEstimatorParameters(OUTPUT_DIR, PROCESSING_INFO.SAVE_SUMMARY_STEPS,
                                                      PROCESSING_INFO.SAVE_CHECKPOINTS_STEPS)
-    # %% Specify outpit directory and number of checkpoint steps to save
-    run_config = tf.estimator.RunConfig(
-        model_dir=OUTPUT_DIR,
-        save_summary_steps=PROCESSING_INFO.SAVE_SUMMARY_STEPS,
-        save_checkpoints_steps=PROCESSING_INFO.SAVE_CHECKPOINTS_STEPS)
-    # %% Finish
+
     # %% Estimating number of steps (heuristics?)
     # Todo: 191119 Check huristics in NumberOfStepsEstimator
     numberOfStepsEstimator = NumberOfStepsEstimator(len(train_features), PROCESSING_INFO.BATCH_SIZE,
                                                     PROCESSING_INFO.NUM_TRAIN_EPOCHS, PROCESSING_INFO.WARMUP_PROPORTION)
     # %% Estimator setting
     model_fn = model_fn_builder(
-        num_labels=len(DATA_INFO.CASE_LABEL_LIST),
+        num_labels=len(DATA_INFO['CASE_LABEL_LIST']),
         learning_rate=PROCESSING_INFO.LEARNING_RATE,
         num_train_steps=numberOfStepsEstimator.getNumOfTrainSteps(),  # num_train_steps,
-        num_warmup_steps=numberOfStepsEstimator.getNumOfWarmUpSteps(), BERT_MODEL_HUB=DATA_INFO.BERT_MODEL_HUB)
+        num_warmup_steps=numberOfStepsEstimator.getNumOfWarmUpSteps(), BERT_MODEL_HUB=BERT_MODEL_HUB)
+
+    run_config = tf.estimator.RunConfig(
+        model_dir=OUTPUT_DIR,
+        save_summary_steps=PROCESSING_INFO.SAVE_SUMMARY_STEPS,
+        save_checkpoints_steps=PROCESSING_INFO.SAVE_CHECKPOINTS_STEPS)
+
     estimator = tf.estimator.Estimator(
         model_fn=model_fn,
         config=run_config,
         params={"batch_size": PROCESSING_INFO.BATCH_SIZE})
+
     # %% Create an input function for training. drop_remainder = True for using TPUs.
     train_input_fn = bert.run_classifier.input_fn_builder(
         features=train_features,
@@ -412,7 +411,16 @@ def trainAndEstimate(DATA_INFO, OUTPUT_DIR, PROCESSING_INFO, testInputExamples, 
     # timeit.timeit(estimator.train(input_fn=train_input_fn, max_steps=numberOfStepsEstimator.getNumOfTrainSteps()),
     estimator.train(input_fn=train_input_fn, max_steps=numberOfStepsEstimator.getNumOfTrainSteps())
     print("Training took time ", time.time() - current_time)
-    # %%  Evaluating trained estimator
+    print('')
+    return estimator,tokenizer
+
+#%%
+def performancEvaluation(estimator,currentTestData, infoTrain, OUTPUT_DIR,tokenizer):
+    PROCESSING_INFO = ProcessingInfo()
+    DATA_INFO = infoTrain['dataInfo']
+    testInputExamples = getExamples(currentTestData, infoTrain)
+    test_features = createFeatures(testInputExamples, tokenizer, DATA_INFO['CASE_LABEL_LIST'], PROCESSING_INFO)
+
     test_input_fn = run_classifier.input_fn_builder(
         features=test_features,
         seq_length=PROCESSING_INFO.MAX_SEQ_LENGTH,
@@ -424,131 +432,74 @@ def trainAndEstimate(DATA_INFO, OUTPUT_DIR, PROCESSING_INFO, testInputExamples, 
     print("Evaluation took time ", time.time() - current_time)
     return evaluationResults
 
-
-def getIMDBData(DATA_INFO, DATA_LOCATION_RELATIVE_TO_CODE, DATA_VERSION_APPENDIX):
-    train_dir_ImdbP = Path(DATA_LOCATION_RELATIVE_TO_CODE) / ('train' + DATA_VERSION_APPENDIX)
-    # train_dir_Imdb = r'Data\sentiment\Data\IMDB Reviews\IMDB Data\train'
-    # train_dir_Imdb_short = 'Data/sentiment/Data/IMDB Reviews/IMDB Data/train_short/'
-    # load_directory_data(train_dir_Imdb)
-    train_dir_Imdb = os._fspath(train_dir_ImdbP)
-    print(f'Preparing to read from: {train_dir_Imdb}')
-    imdbTrainData = data4SAandBERT.readImdbData(train_dir_Imdb, readFromSource=DATA_INFO.READ_FROM_SOURCE)
-    print('Creating examples from train data')
-    # %%
-    # test_dir_Imdb = 'Data/sentiment/Data/IMDB Reviews/IMDB Data/test/'
-    # Other: Test Data
-    test_dir_Imdb = train_dir_ImdbP = Path(DATA_LOCATION_RELATIVE_TO_CODE) / (
-            'test' + DATA_VERSION_APPENDIX)  # 'Data/sentiment/Data/IMDB Reviews/IMDB Data/test_short/'
-    imdbTestData = data4SAandBERT.readImdbData(test_dir_Imdb, readFromSource=DATA_INFO.READ_FROM_SOURCE)
-    print('Creating examples from test data')
-    return imdbTestData, imdbTrainData
-
-
-def getIMDBData(DATA_INFO, DATA_LOCATION_RELATIVE_TO_CODE, DATA_VERSION_APPENDIX,readDBFnc):
-    train_dir_ImdbP = Path(DATA_LOCATION_RELATIVE_TO_CODE) / ('train' + DATA_VERSION_APPENDIX)
-    # train_dir_Imdb = r'Data\sentiment\Data\IMDB Reviews\IMDB Data\train'
-    # train_dir_Imdb_short = 'Data/sentiment/Data/IMDB Reviews/IMDB Data/train_short/'
-    # load_directory_data(train_dir_Imdb)
-    train_dir_Imdb = os._fspath(train_dir_ImdbP)
-    print(f'Preparing to read from: {train_dir_Imdb}')
-    imdbTrainData = data4SAandBERT.readImdbData(train_dir_Imdb, readFromSource=DATA_INFO.READ_FROM_SOURCE)
-    print('Creating examples from train data')
-    # %%
-    # test_dir_Imdb = 'Data/sentiment/Data/IMDB Reviews/IMDB Data/test/'
-    # Other: Test Data
-    test_dir_Imdb = train_dir_ImdbP = Path(DATA_LOCATION_RELATIVE_TO_CODE) / (
-            'test' + DATA_VERSION_APPENDIX)  # 'Data/sentiment/Data/IMDB Reviews/IMDB Data/test_short/'
-    imdbTestData = readDBFnc(test_dir_Imdb, readFromSource=DATA_INFO.READ_FROM_SOURCE)
-    print('Creating examples from test data')
-    return imdbTestData, imdbTrainData
-
+#%%
 def main():
-    # %% Select location of data directory based on Manchine
+    processingInfo = ProcessingInfo()
+    importedTrainData = dict()
+    importedTestData = dict()
+    trainedModels = dict()
+    evaluationResults = dict()
     data2Use2Train = ['imdb']  # 'imdb', 'rt'
     data2Use2Test = ['imdb']
     inputInfo2Save = {}
+    dataModelsResults = dict()
+    # %% read command line parameters
+    readFromDataSource = params.readDataSource
+    inputDir = params.inputDirectoryIMDBData
+
     dataVersionAppendix = DataVersionAppendix()
-    DATA_VERSION_APPENDIX = dataVersionAppendix.shortVersion # dataVersionAppendix.shortVersion
+    DATA_VERSION_APPENDIX = dataVersionAppendix.shortVersion  # dataVersionAppendix.shortVersion
     READ_FROM_SOURCE = True  # True #False
     print('')
-    vals = databaseName2Info.keys()
-    pdPerformance = pd.DataFrame(columns=['auc', 'eval_accuracy', 'f1_score', 'false_negatives', 'false_positives', 'loss', 'precision', 'recall', 'true_negatives', 'true_positives', 'global_step', 'train', 'test'])
+    # vals = databaseName2Info.keys()
+    pdPerformance = pd.DataFrame(columns=['auc', 'eval_accuracy', 'f1_score', 'false_negatives', 'false_positives', 'loss', 'precision',
+                 'recall', 'true_negatives', 'true_positives', 'global_step', 'train', 'test'])
     for currentTrainDataName in data2Use2Train:
-        currentTrainDBDir = databaseName2Info[currentTrainDataName]
-        for currentTestDataName in data2Use2Train:
-            currentTestDBDir = databaseName2Info[currentTestDataName]
-            PROCESSING_INFO, evaluationResults, myCWD = getPerformanceMeassure(DATA_VERSION_APPENDIX, inputInfo2Save,currentTrainDataName,currentTrainDBDir)
-            evaluationResults['train']=currentTrainDataName
-            evaluationResults['test']=currentTestDataName
-            pdPerformance.append(evaluationResults,ignore_index=True)
-            print(f'**** Train DB:{currentTrainDataName}, testDB:{currentTestDataName}')
+        currentTrainDBInfo = databaseName2Info[currentTrainDataName]
+        trainData = None
+        if (currentTrainDataName not in importedTrainData):
+            trainData, testData = readData(inputDir, databaseName2Info, currentTrainDataName, DATA_VERSION_APPENDIX,
+                                           readFromDataSource)
+            importedTrainData[currentTrainDataName] = trainData
+            importedTestData[currentTrainDataName] = testData
+        currentTrainData = importedTrainData[currentTrainDataName]
+        infoTrain = databaseName2Info[currentTrainDataName]
+        OUTPUT_DIR = getOutputDir(inputDir, processingInfo.time, infoTrain)
+        # **********************************************************************************
+        trainedEstimator,tokenizer = trainModel(currentTrainDataName, currentTrainData, infoTrain, OUTPUT_DIR)
+        # **********************************************************************************
+        pdPerformance = pd.DataFrame()
+        # pdPerformance = pd.DataFrame(
+        #     columns=['train','test','auc', 'eval_accuracy', 'f1_score', 'false_negatives', 'false_positives', 'loss', 'precision',
+        #              'recall', 'true_negatives', 'true_positives', 'global_step', 'train', 'test'])
+        for currentTestDataName in importedTestData:
+            if currentTestDataName not in data2Use2Test:
+                # readData(inputDir, databaseName2Info, currentTrainDataName, DATA_VERSION_APPENDIX, readFromDataSource)
+                trainData, testData = readData(inputDir, databaseName2Info, currentTrainDataName,
+                                               DATA_VERSION_APPENDIX, readFromDataSource)
+                importedTrainData[currentTestDataName] = trainData
+                importedTestData[currentTestDataName] = testData
+                # read appropriate test data
+            currentTestData = importedTestData[currentTestDataName]
+            # **********************************************************************************
+            evaluationResults = performancEvaluation(trainedEstimator,currentTestData, infoTrain, OUTPUT_DIR,tokenizer)
+            # **********************************************************************************
+            mdic= {}
+            key = 'auc'
+            mdic[key]= evaluationResults[key]
+            mdic['train'] = currentTrainDataName
+            mdic['test'] = currentTestDataName
 
-        print(f'Train DB:{currentTrainDataName}')
+            nsd = pd.Series(mdic)
+            pdPerformance.append(nsd, ignore_index=True)
 
-    inputInfo2Save['evaluation'] = evaluationResults
-    inputInfo2Save['DATA_VERSION_APPENDIX'] = DATA_VERSION_APPENDIX
-    print(evaluationResults)
-    print('Finished All')
-    # import json
-    infoFileName = 'info'+ DATA_VERSION_APPENDIX+ '_' +  PROCESSING_INFO.timeStr + '.json'
-    infoFileName = str(Path(myCWD) / infoFileName)
-    print(f'Writing info to file {infoFileName}')
-    infoJsonStr=json.dumps(inputInfo2Save, sort_keys=True, indent=4,cls=NumpyEncoder)
-    with open(infoFileName, 'w') as f:
-        f.write(infoJsonStr)
-        # json.dump(infoJsonStr,f)
-    print(f'*** Finished !!! ***')
-
-
-def getPerformanceMeassure(DATA_VERSION_APPENDIX, inputInfo2Save,currentDataName,currentDBDirDict):
-    currentDBDir = currentDBDirDict['dir']
-    readDBFnc = currentDBDirDict['fnc']
-    imdbDataPath = str(Path(params.inputDirectoryIMDBData) / currentDBDir)
-    inputInfo2Save['inputPath'] = params.inputDirectoryIMDBData
-    print(f'{imdbDataPath}')
-    myCWD = Path.cwd()
-    print(f'cwd = {myCWD}')
-    # imdbRelPath= Path(imdbDataPath).relative_to(myCWD)
-    # imdbRelPath= Path(imdbDataPath).relative_to(myCWD)
-    # print(PurePath(imdbDataPath).relative_to(myCWD))
-    imdbRelPath = os.path.relpath(imdbDataPath, myCWD)
-    DATA_LOCATION_RELATIVE_TO_CODE = imdbRelPath
-    print(f'imdb data relative path  = {imdbRelPath}')
-    # dataLocation = DataLocation()
-    # %% =================================================
-    DATA_INFO = DataInfo()
-    PROCESSING_INFO = ProcessingInfo()
-    # %% Read Data
-    inputInfo2Save['timeOfRun'] = PROCESSING_INFO.timeStr
-    current_dir = Path(__file__).parent
-    print(f"Working  directory: {current_dir}")
-    print(f'IMDB data column: {DATA_INFO.DATA_COLUMN}')
-    print('Reading training imdb_data')
-    # train_dir_Imdb = 'Data/sentiment/Data/IMDB Reviews/IMDB Data/train/'
-    # C:\Work\dev\Transportability\Data\sentiment\Data\IMDB Reviews\IMDB Data\test
-    # Todo: 191118 Assign Start aate and time to varialbe
-    startDate = None
-    # Todo: 191118 Convert Date + Time to String
-    # Todo: Convert Date + Time to String
-    startDateString = ""
-    OUTPUT_DIR = getOutputDir(DATA_LOCATION_RELATIVE_TO_CODE, PROCESSING_INFO.time)
-    imdbTestData, imdbTrainData = getIMDBData(DATA_INFO, DATA_LOCATION_RELATIVE_TO_CODE, DATA_VERSION_APPENDIX, readDBFnc)
-    # %% Process data
-    print('Finished reading imdb_data ')
-    print('Creating examples from train data')
-    #
-    trainInputExamples = getExamples(imdbTrainData, DATA_INFO)
-    print('Creating examples from test data')
-    testInputExamples = getExamples(imdbTestData, DATA_INFO)
-    print('Creating tokenizer')
-    tokenizer = create_tokenizer_from_hub_module(DATA_INFO)
-    print('Tokenizer Created')
-    tokenizingExample(tokenizer)
-    # %% Getting Features from test and training data
-    # Convert our train and test features to InputFeatures that BERT understands.
-    evaluationResults = trainAndEstimate(DATA_INFO, OUTPUT_DIR, PROCESSING_INFO, testInputExamples, tokenizer,
-                                         trainInputExamples)
-    return PROCESSING_INFO, evaluationResults, myCWD
+            print('')
+            # train and test
+            # train model of model does not exist
+            # getPerformanceMeasure(t)
+            print('')
+        print('')
+    print('')
 
 
 # %% MAIN

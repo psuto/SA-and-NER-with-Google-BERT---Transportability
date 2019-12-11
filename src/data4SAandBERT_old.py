@@ -118,7 +118,7 @@ def extractIMDBdata(data, inputPath, sentimentMap):
 
 
 # %%
-def readImdbDataOrig(imdb_dir, readFromSource=False):
+def readImdbData(imdb_dir, readFromSource=False):
     """
     PS:
 
@@ -135,54 +135,6 @@ def readImdbDataOrig(imdb_dir, readFromSource=False):
     data = IMDB_to_csv(abs_imdb_dir,readFromSource)
     return (data)
 
-# %% MAIN
-def readIMDBData(inputDir, info, dbName, dataVersionAppendix, readFromSource=True):
-    mainDBDir = info['dir']
-    mainDataPath = str(Path(inputDir) / mainDBDir)
-    train_dir_Imdb = Path(mainDataPath) / ('train' + dataVersionAppendix)
-    test_dir_Imdb = Path(mainDataPath) / ('test' + dataVersionAppendix)
-    trainData = readImdbDataOrig(train_dir_Imdb, readFromSource)
-    testData = readImdbDataOrig(test_dir_Imdb, readFromSource)
-    return trainData,testData
-
-
-# %%
-def readImdbData(dataDir, DATA_VERSION_APPENDIX, readFromSource=False):
-    """
-    PS:
-
-    :param imdb_dir:
-    :return:
-    """
-
-    abs_imdb_parent_dir = Path(dataDir).absolute().resolve()
-    # abs_imdb_dir = os.path.abspath(imdb_dir)
-    abs_imdb_dir = Path(abs_imdb_parent_dir) / ('train' + DATA_VERSION_APPENDIX)
-    if os.path.exists(abs_imdb_dir):
-        print(f'Directory with imdb training data  {abs_imdb_dir} exists')
-    else:
-        print(f'Directory with imdb training data  "{abs_imdb_dir}" does not exists')
-    # print(f'Training data in {abs_imdb_dir}')
-    data = IMDB_to_csv(abs_imdb_dir,readFromSource)
-    return (data)
-
-# %%
-def readRTData(imdb_dir, readFromSource=False):
-    """
-    PS:
-
-    :param imdb_dir:
-    :return:
-    """
-    abs_imdb_dir = Path(imdb_dir).absolute().resolve()
-    # abs_imdb_dir = os.path.abspath(imdb_dir)
-    if os.path.exists(abs_imdb_dir):
-        print(f'Directory with imdb training data  {abs_imdb_dir} exists')
-    else:
-        print(f'Directory with imdb training data  "{abs_imdb_dir}" does not exists')
-    # print(f'Training data in {abs_imdb_dir}')
-    data = pd.read_csv(abs_imdb_dir,header=0,delimiter="\t",quoting=3)
-    return (data)
 
 # %%
 def main():
