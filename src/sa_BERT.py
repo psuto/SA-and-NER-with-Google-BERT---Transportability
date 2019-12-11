@@ -440,7 +440,7 @@ def main():
     trainedModels = dict()
     evaluationResults = dict()
     data2Use2Train = ['imdb']  # 'imdb', 'rt'
-    data2Use2Test = ['imdb']
+    data2Use2Test = ['rt']
     inputInfo2Save = {}
     dataModelsResults = dict()
     # %% read command line parameters
@@ -472,8 +472,8 @@ def main():
         # pdPerformance = pd.DataFrame(
         #     columns=['train','test','auc', 'eval_accuracy', 'f1_score', 'false_negatives', 'false_positives', 'loss', 'precision',
         #              'recall', 'true_negatives', 'true_positives', 'global_step', 'train', 'test'])
-        for currentTestDataName in importedTestData:
-            if currentTestDataName not in data2Use2Test:
+        for currentTestDataName in data2Use2Test:
+            if currentTestDataName not in importedTestData:
                 # readData(inputDir, databaseName2Info, currentTrainDataName, DATA_VERSION_APPENDIX, readFromDataSource)
                 trainData, testData = readData(inputDir, databaseName2Info, currentTrainDataName,
                                                DATA_VERSION_APPENDIX, readFromDataSource)
@@ -484,15 +484,12 @@ def main():
             # **********************************************************************************
             evaluationResults = performancEvaluation(trainedEstimator,currentTestData, infoTrain, OUTPUT_DIR,tokenizer)
             # **********************************************************************************
-            mdic= {}
-            key = 'auc'
-            mdic[key]= evaluationResults[key]
-            mdic['train'] = currentTrainDataName
-            mdic['test'] = currentTestDataName
 
-            nsd = pd.Series(mdic)
-            pdPerformance.append(nsd, ignore_index=True)
+            evaluationResults['train'] = currentTrainDataName
+            evaluationResults['test'] = currentTestDataName
 
+            nsd = pd.Series(evaluationResults)
+            pdPerformance = pdPerformance.append(evaluationResults, ignore_index=True)
             print('')
             # train and test
             # train model of model does not exist
