@@ -15,6 +15,8 @@ import os
 import glob
 from pathlib import Path
 import re
+import numpy as np
+from sklearn.model_selection import train_test_split
 
 #
 # def load_directory_data(imdb_dir):
@@ -71,26 +73,26 @@ def IMDB_to_csv(directory, read_from_source=False):
     pOut = mainDir / "imdb_complete.csv"
     if pOut.exists() and (not read_from_source):
         print(f'* Reading from File {pOut}')
-        dataRes = pd.read_csv(pOut, delimiter = ',')
+        dataRes = pd.read_csv(pOut, delimiter=',')
+        dataRes.dropna(inplace=True)
     else:
         data = pd.DataFrame()
-        negPath = mainDir / "neg" /"*.txt"
+        negPath = mainDir / "neg" / "*.txt"
         # for filename in glob.glob(str(directory) + '\\neg\\*.txt'):
         print(f'Reading files  {os._fspath(negPath)}')
         dataNeg = extractIMDBdata(data, negPath, sentimentMap)
         # posPath = Path(directory + "/pos/*.txt")
-        posPath =  mainDir / "pos" /"*.txt"
+        posPath = mainDir / "pos" / "*.txt"
         print(f'Reading files  {os._fspath(posPath)}')
         dataPos = extractIMDBdata(data, posPath, sentimentMap)
         # data = data.sort_values(['pol', 'id'])
         # data = data.reset_index(drop=True)
         # # data['rating_norm'] = (data['rating'] - data['rating'].min())/( data['rating'].max() - data['rating'].min() )
-        dataRes= pd.concat([dataPos, dataNeg]).sample(frac=1).reset_index(drop=True)
+        dataRes = pd.concat([dataPos, dataNeg]).sample(frac=1).reset_index(drop=True)
         print(f"Saving file to {os._fspath(pOut)}")
-        dataRes.to_csv(pOut,  index=False)
-    return(dataRes)
-
-
+        dataRes.to_csv(pOut, index=False)
+        dataRes.dropna(inplace=True)
+    return (dataRes)
 
 
 def extractIMDBdata(data, inputPath, sentimentMap):
@@ -132,8 +134,9 @@ def readImdbDataOrig(imdb_dir, readFromSource=False):
     else:
         print(f'Directory with imdb training data  "{abs_imdb_dir}" does not exists')
     # print(f'Training data in {abs_imdb_dir}')
-    data = IMDB_to_csv(abs_imdb_dir,readFromSource)
+    data = IMDB_to_csv(abs_imdb_dir, readFromSource)
     return (data)
+
 
 # %% MAIN
 def readIMDBData(inputDir, info, dbName, dataVersionAppendix, readFromSource=True):
@@ -143,7 +146,7 @@ def readIMDBData(inputDir, info, dbName, dataVersionAppendix, readFromSource=Tru
     test_dir_Imdb = Path(mainDataPath) / ('test' + dataVersionAppendix)
     trainData = readImdbDataOrig(train_dir_Imdb, readFromSource)
     testData = readImdbDataOrig(test_dir_Imdb, readFromSource)
-    return trainData,testData
+    return trainData, testData
 
 
 # %%
@@ -163,26 +166,143 @@ def readImdbData(dataDir, DATA_VERSION_APPENDIX, readFromSource=False):
     else:
         print(f'Directory with imdb training data  "{abs_imdb_dir}" does not exists')
     # print(f'Training data in {abs_imdb_dir}')
-    data = IMDB_to_csv(abs_imdb_dir,readFromSource)
+    data = IMDB_to_csv(abs_imdb_dir, readFromSource)
     return (data)
 
 # %%
-def readRTData(imdb_dir, readFromSource=False):
+def readAndCleanFinanceMessagesData(filePath):
+    financeMessagesData = pd.read_csv(filePath, encoding="ISO-8859-1")
+    sentimentMap = {
+        'neg': 0,
+        'pos': 1
+    }
+
+    financeMessagesData.dropna(inplace=True)
+    print(f'{financeMessagesData.columns.to_list}')
+    financeMessagesData.rename(columns={'Unique':'ItemID','Text': 'text'}, inplace=True)
+    scoreColName = 'Average Score'
+    financeMessagesData['polarity'] = np.where(financeMessagesData[scoreColName] < 0 , 'neg',
+                                     np.where(financeMessagesData[scoreColName] == 0, 'neut',
+                                              np.where(financeMessagesData[scoreColName] > 0,
+                                                       'pos', "")))
+
+    financeMessagesData = financeMessagesData[financeMessagesData['polarity'] != 'neut']
+    financeMessagesData['polarity'].replace(sentimentMap, inplace=True)  # ==sentStr] = sentimentMap[sentStr]
+    train, test = train_test_split(financeMessagesData, test_size=0.33, random_state=42)
+    return train, test
+
+
+
+def readFinanceMessagesData(data_dir, info, databaseName2Info, dataVersionAppendix, readFromSource):
+    # / home / peter / dev / Work / Transportation / Data / finance / EnglishGS.csv
+    abs_imdb_dir = Path(data_dir) / "finance"
+    abs_imdb_dir = abs_imdb_dir.absolute().resolve()
+    trainTestPath = abs_imdb_dir / ("EnglishGS" + dataVersionAppendix + ".csv")
+    train, test = readAndCleanFinanceMessagesData(trainTestPath)
+    return train, test
+
+
+def readAndCleanFinanceHeadlineData(filePath):
+    financeHeadlineData = pd.read_csv(filePath, encoding="ISO-8859-1")
+    sentimentMap = {
+        'neg': 0,
+        'pos': 1
+    }
+
+    financeHeadlineData.dropna(inplace=True)
+    print(f'{financeHeadlineData.columns.to_list}')
+    # ['id', 'Company Name (Original)', 'Company Name (Fixed)', 'Text',
+    #        'sentiment score', '# Scores']
+    financeHeadlineData.rename(columns={'id': 'ItemID', 'Text': 'text'}, inplace=True)
+    scoreColName = 'sentiment score'
+    financeHeadlineData['polarity'] = np.where(financeHeadlineData[scoreColName] < 0, 'neg',
+                                               np.where(financeHeadlineData[scoreColName] == 0, 'neut',
+                                                        np.where(financeHeadlineData[scoreColName] > 0,
+                                                                 'pos', "")))
+
+    financeHeadlineData = financeHeadlineData[financeHeadlineData['polarity'] != 'neut']
+    financeHeadlineData['polarity'].replace(sentimentMap, inplace=True)  # ==sentStr] = sentimentMap[sentStr]
+    train, test = train_test_split(financeHeadlineData, test_size=0.33, random_state=42)
+    return train, test
+
+
+def readFinanceHeadlinesData(data_dir, info, databaseName2Info, dataVersionAppendix, readFromSource):
+    # / home / peter / dev / Work / Transportation / Data / finance / EnglishGS.csv
+    abs_imdb_dir = Path(data_dir) / "finance"
+    abs_imdb_dir = abs_imdb_dir.absolute().resolve()
+    trainTestPath = abs_imdb_dir / ("SSIX News headlines Gold Standard EN" + dataVersionAppendix + ".csv")
+    # finance_headlines
+    train, test = readAndCleanFinanceHeadlineData(trainTestPath)
+    return train, test
+
+
+# %%
+def readTwitterData(data_dir, info, databaseName2Info, dataVersionAppendix, readFromSource):
+    # /home/peter/dev/Work/Transportation/Data/twitter/
+    abs_imdb_dir = Path(data_dir) / "twitter"
+    abs_imdb_dir = abs_imdb_dir.absolute().resolve()
+    # trainPath = abs_imdb_dir / ("train" + dataVersionAppendix + ".tsv")
+    # # Test data are without labels
+    # testPath = abs_imdb_dir / ("test" + dataVersionAppendix + ".tsv")
+    trainTestPath = abs_imdb_dir / ("train" + dataVersionAppendix + ".csv")
+    # testPath = abs_imdb_dir / ("test" + dataVersionAppendix + ".csv")
+    train, test = readAndCleanTwitterData(trainTestPath)
+    return train, test
+
+
+# %%
+def readRTData(data_dir, info, databaseName2Info, dataVersionAppendix, readFromSource):
     """
     PS:
-
-    :param imdb_dir:
+    :param data_dir:
     :return:
     """
-    abs_imdb_dir = Path(imdb_dir).absolute().resolve()
-    # abs_imdb_dir = os.path.abspath(imdb_dir)
+    abs_imdb_dir = Path(data_dir) / "RT_Sentiment"
+    abs_imdb_dir = abs_imdb_dir.absolute().resolve()
+    trainPath = abs_imdb_dir / ("train" + dataVersionAppendix + ".tsv")
+    # Test data are without labels
+    testPath = abs_imdb_dir / ("test" + dataVersionAppendix + ".tsv")
+
+    # abs_imdb_dir = str(abs_imdb_dir)
     if os.path.exists(abs_imdb_dir):
         print(f'Directory with imdb training data  {abs_imdb_dir} exists')
     else:
         print(f'Directory with imdb training data  "{abs_imdb_dir}" does not exists')
     # print(f'Training data in {abs_imdb_dir}')
-    data = pd.read_csv(abs_imdb_dir,header=0,delimiter="\t",quoting=3)
-    return (data)
+    train, test = readAndCleanDataRT(trainPath)
+    # testData = readAndCleanRTData(testPath)
+    return train, test
+
+
+def readAndCleanTwitterData(filePath):
+    twitter_train = pd.read_csv(filePath, encoding="ISO-8859-1")
+    twitter_train.dropna(inplace=True)
+    # ['ItemID', 'Sentiment', 'SentimentText']
+    twitter_train.columns = ['ItemID', 'polarity', 'text']
+    # print(f"{twitter_train['polarity'].min()}")
+    # print(f"{twitter_train['polarity'].max()}")
+    train, test = train_test_split(twitter_train, test_size = 0.33, random_state = 42)
+    return train, test
+
+
+def readAndCleanDataRT(trainPath):
+    sentimentMap = {
+        'neg': 0,
+        'pos': 1
+    }
+    trainData = pd.read_csv(trainPath, header=0, delimiter="\t", quoting=3)
+    trainData.dropna(inplace=True)
+    trainData['polarity'] = np.where(trainData['Sentiment'] < 3, 'neg',
+                                     np.where(trainData['Sentiment'] == 3, 'neut',
+                                              np.where(trainData['Sentiment'] > 3,
+                                                       'pos',"")))
+    trainData = trainData[trainData['polarity']!='neut']
+    trainData['polarity'].replace(sentimentMap,inplace=True)  #==sentStr] = sentimentMap[sentStr]
+    trainData.rename(columns={'Phrase':'text'},inplace=True)
+    # trainData['polarity'].astype(int)
+    train, test = train_test_split(trainData, test_size = 0.33, random_state = 42)
+    return train, test
+
 
 # %%
 def main():
@@ -193,13 +313,14 @@ def main():
     print(f'Reading {train_dir_Imdb}')
     imdbTrainData = readImdbData(train_dir_Imdb)
     # %%
-    test_dir_Imdb = '../Data/sentiment/Data/IMDB Reviews/IMDB Data/test/' #'Data/sentiment/Data/IMDB Reviews/IMDB Data/test/'
+    test_dir_Imdb = '../Data/sentiment/Data/IMDB Reviews/IMDB Data/test/'  # 'Data/sentiment/Data/IMDB Reviews/IMDB Data/test/'0
     print(f'Reading {test_dir_Imdb}')
     imdbTestData = readImdbData(test_dir_Imdb)
     # %%
     print(f'Finished')
     print(f'---------------')
     # transfrom Imdb data
+
 
 if __name__ == "__main__":
     main()

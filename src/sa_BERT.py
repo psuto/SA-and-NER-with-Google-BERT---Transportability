@@ -39,16 +39,43 @@ databaseName2Info = {'imdb': {'dir': "IMDB Reviews",
                                   'CASE_LABEL_LIST': [0, 1]}
                               },
                      'rt': {'dir': "RT_Sentiment",
-                            'fnc': data4SAandBERT.readRTData},
-                     'READ_FROM_SOURCE': True,
-                     'dataInfo': {
-                         'self.LABEL_COLUMN': '',
-                         'DATA_COLUMN': '',
-                         'CASE_LABEL_LIST': ''
-                     }
+                            'fnc': data4SAandBERT.readRTData,
+                            'READ_FROM_SOURCE': True,
+                            'dataInfo': {
+                                'self.LABEL_COLUMN': 'polarity',
+                                'DATA_COLUMN': 'text',
+                                'CASE_LABEL_LIST': [0,1]},
+                            },
+                     'twitter': {'dir': "twitter",
+                            'fnc': data4SAandBERT.readTwitterData,
+                            'READ_FROM_SOURCE': True,
+                            'dataInfo': {
+                                'self.LABEL_COLUMN': 'polarity',
+                                'DATA_COLUMN': 'text',
+                                'CASE_LABEL_LIST': [0,1]},
+                            },
+
+                     'finM': {'dir': "finance",
+                            'fnc': data4SAandBERT.readFinanceMessagesData,
+                            'READ_FROM_SOURCE': True,
+                            'dataInfo': {
+                                'self.LABEL_COLUMN': 'polarity',
+                                'DATA_COLUMN': 'text',
+                                'CASE_LABEL_LIST': [0,1]},
+                            },
+
+                     'finH': {'dir': "finance",
+                            'fnc': data4SAandBERT.readFinanceHeadlinesData,
+                            'READ_FROM_SOURCE': True,
+                            'dataInfo': {
+                                'self.LABEL_COLUMN': 'polarity',
+                                'DATA_COLUMN': 'text',
+                                'CASE_LABEL_LIST': [0,1]},
+                            }
 
                      }
 
+# readAndCleanFinanceHeadlineData
 BERT_MODEL_HUB = "https://tfhub.dev/google/bert_uncased_L-12_H-768_A-12/1"
 
 
@@ -128,7 +155,8 @@ def getExamples(df, dataInfo, guid=None, text_b=None):
     def processLine(l):
         text_a = l[dataInfo['dataInfo']['DATA_COLUMN']]
         labelColumn = l[labelColName]
-        res = bert.run_classifier.InputExample(guid=None,
+        # isnull = l.isnull().values.any()
+        res = bert.run_classifier.InputExample(guid=None, # l['ItemID']
                                                # Globally unique ID for bookkeeping, unused in this example
                                                text_a=text_a,
                                                # =x[DATA_COLUMN],
@@ -148,6 +176,7 @@ def getExamples(df, dataInfo, guid=None, text_b=None):
 def readData(inputDir, databaseName2Info, dbName, dataVersionAppendix, readFromSource=True):
     info = databaseName2Info[dbName]
     readDBFnc = info['fnc']
+    print(f'running fnc {str(readDBFnc)}')
     trainDB, testDB = readDBFnc(inputDir, info, databaseName2Info, dataVersionAppendix, readFromSource)
     return trainDB, testDB
 
@@ -362,6 +391,8 @@ class NumberOfStepsEstimator():
 
 # %%
 def createFeatures(inputExamples, tokenizer, labelList, processingInfo):
+    print(f'Input examples: {str(inputExamples)}')
+    # print(f'Input examples: {str(inputExamples[1].text_a)}')
     features = bert.run_classifier.convert_examples_to_features(inputExamples, labelList,
                                                                 processingInfo.MAX_SEQ_LENGTH, tokenizer
                                                                 )
@@ -439,8 +470,8 @@ def main():
     importedTestData = dict()
     trainedModels = dict()
     evaluationResults = dict()
-    data2Use2Train = ['imdb']  # 'imdb', 'rt'
-    data2Use2Test = ['rt']
+    data2Use2Train = ['imdb', 'rt', 'twitter', 'finM','finH']  # 'imdb', 'rt' 'finM' 'twitter'
+    data2Use2Test = ['imdb', 'rt', 'twitter', 'finM','finH']
     inputInfo2Save = {}
     dataModelsResults = dict()
     # %% read command line parameters
@@ -452,8 +483,9 @@ def main():
     READ_FROM_SOURCE = True  # True #False
     print('')
     # vals = databaseName2Info.keys()
-    pdPerformance = pd.DataFrame(columns=['auc', 'eval_accuracy', 'f1_score', 'false_negatives', 'false_positives', 'loss', 'precision',
-                 'recall', 'true_negatives', 'true_positives', 'global_step', 'train', 'test'])
+    # pdPerformance = pd.DataFrame(columns=['auc', 'eval_accuracy', 'f1_score', 'false_negatives', 'false_positives', 'loss', 'precision',
+    #              'recall', 'true_negatives', 'true_positives', 'global_step', 'train', 'test'])
+    pdPerformance = pd.DataFrame()
     for currentTrainDataName in data2Use2Train:
         currentTrainDBInfo = databaseName2Info[currentTrainDataName]
         trainData = None
@@ -468,14 +500,14 @@ def main():
         # **********************************************************************************
         trainedEstimator,tokenizer = trainModel(currentTrainDataName, currentTrainData, infoTrain, OUTPUT_DIR)
         # **********************************************************************************
-        pdPerformance = pd.DataFrame()
+
         # pdPerformance = pd.DataFrame(
         #     columns=['train','test','auc', 'eval_accuracy', 'f1_score', 'false_negatives', 'false_positives', 'loss', 'precision',
         #              'recall', 'true_negatives', 'true_positives', 'global_step', 'train', 'test'])
         for currentTestDataName in data2Use2Test:
             if currentTestDataName not in importedTestData:
                 # readData(inputDir, databaseName2Info, currentTrainDataName, DATA_VERSION_APPENDIX, readFromDataSource)
-                trainData, testData = readData(inputDir, databaseName2Info, currentTrainDataName,
+                trainData, testData = readData(inputDir, databaseName2Info, currentTestDataName,
                                                DATA_VERSION_APPENDIX, readFromDataSource)
                 importedTrainData[currentTestDataName] = trainData
                 importedTestData[currentTestDataName] = testData
@@ -483,10 +515,12 @@ def main():
             currentTestData = importedTestData[currentTestDataName]
             # **********************************************************************************
             evaluationResults = performancEvaluation(trainedEstimator,currentTestData, infoTrain, OUTPUT_DIR,tokenizer)
-            # **********************************************************************************
+            # ***********************_num_records***********************************************************
 
-            evaluationResults['train'] = currentTrainDataName
-            evaluationResults['test'] = currentTestDataName
+            evaluationResults['_train'] = currentTrainDataName
+            evaluationResults['_test'] = currentTestDataName
+            evaluationResults['train_num_records'] = currentTrainData.__len__()
+            evaluationResults['test_num_records'] = currentTestData.__len__()
 
             nsd = pd.Series(evaluationResults)
             pdPerformance = pdPerformance.append(evaluationResults, ignore_index=True)
@@ -496,8 +530,18 @@ def main():
             # getPerformanceMeasure(t)
             print('')
         print('')
+        writePerformanceMeasures(pdPerformance,inputDir,processingInfo.timeStr,DATA_VERSION_APPENDIX)
+
     print('')
 
+
+# %% MAIN
+def writePerformanceMeasures(df,mainDir, timeStr,dataTypeAppendix):
+    parentPath = Path(mainDir).parent
+    outDir = parentPath / 'Output'
+    outDir.mkdir
+    pOut = outDir / ('performaceMeasures_sentimentTagging_'+timeStr+'_'+dataTypeAppendix+'.csv')
+    df.to_csv(pOut, index=False)
 
 # %% MAIN
 if __name__ == "__main__":
