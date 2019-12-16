@@ -117,10 +117,12 @@ console_log_level = logging.INFO  # default WARNING
 file_log_level = logging.INFO  # default ERROR
 
 logger = logging.getLogger(__name__)
-
+processingInfo = ProcessingInfo()
 # Create handlers
 c_handler = logging.StreamHandler()
-f_handler = logging.FileHandler('file.log')
+outputDir = Path(params.inputDirectoryIMDBData  ).parent /'Output'
+outputDir.mkdir(exist_ok=True)
+f_handler = logging.FileHandler(outputDir /('file_'+processingInfo.timeStr+'.log'))
 c_handler.setLevel(console_log_level)
 f_handler.setLevel(file_log_level)
 
@@ -203,7 +205,6 @@ def getOutputDir(DATA_LOCATION_RELATIVE_TO_CODE, startDate, infoTrain):
     outDir.mkdir(parents=True, exist_ok=True)
     print(f"Output path {str(outDir)}")
     return str(outDir)
-
 
 # %%
 def getTFEstimatorParameters(OUTPUT_DIR, SAVE_SUMMARY_STEPS, SAVE_CHECKPOINTS_STEPS):
@@ -322,7 +323,7 @@ def model_fn_builder(num_labels, learning_rate, num_train_steps,
                 precision = tf.metrics.precision(
                     label_ids,
                     predicted_labels)
-                true_pos = tf.metrics.true_positives(
+                true_pos = tf.compat.v1.metrics.true_positives(
                     label_ids,
                     predicted_labels)
                 true_neg = tf.metrics.true_negatives(
@@ -400,11 +401,10 @@ def createFeatures(inputExamples, tokenizer, labelList, processingInfo):
 
 
 # %%
-def trainModel(currentTrainDataName, currentTrainData, infoTrain, OUTPUT_DIR):
+def trainModel(currentTrainDataName, currentTrainData, infoTrain, OUTPUT_DIR,tokenizer):
     PROCESSING_INFO = ProcessingInfo()
     DATA_INFO = infoTrain['dataInfo']
     trainInputExamples = getExamples(currentTrainData, infoTrain)
-    tokenizer = create_tokenizer_from_hub_module(BERT_MODEL_HUB)
     train_features = createFeatures(trainInputExamples, tokenizer, DATA_INFO['CASE_LABEL_LIST'], PROCESSING_INFO)
     trEstimatorParameters = getTFEstimatorParameters(OUTPUT_DIR, PROCESSING_INFO.SAVE_SUMMARY_STEPS,
                                                      PROCESSING_INFO.SAVE_CHECKPOINTS_STEPS)
@@ -465,13 +465,15 @@ def performancEvaluation(estimator,currentTestData, infoTrain, OUTPUT_DIR,tokeni
 
 #%%
 def main():
-    processingInfo = ProcessingInfo()
+    # processingInfo = ProcessingInfo()
     importedTrainData = dict()
     importedTestData = dict()
     trainedModels = dict()
     evaluationResults = dict()
-    data2Use2Train = ['imdb', 'rt', 'twitter', 'finM','finH']  # 'imdb', 'rt' 'finM' 'twitter'
-    data2Use2Test = ['imdb', 'rt', 'twitter', 'finM','finH']
+    data2Use2Train = ['imdb']  # 'imdb', 'rt' 'finM' 'twitter'
+    data2Use2Test = ['imdb']
+    # data2Use2Train = ['imdb', 'rt', 'twitter', 'finM','finH']  # 'imdb', 'rt' 'finM' 'twitter'
+    # data2Use2Test = ['imdb', 'rt', 'twitter', 'finM','finH']
     inputInfo2Save = {}
     dataModelsResults = dict()
     # %% read command line parameters
@@ -480,12 +482,14 @@ def main():
 
     dataVersionAppendix = DataVersionAppendix()
     DATA_VERSION_APPENDIX = dataVersionAppendix.shortVersion  # dataVersionAppendix.shortVersion
+    # DATA_VERSION_APPENDIX = dataVersionAppendix.normalVersion
     READ_FROM_SOURCE = True  # True #False
     print('')
     # vals = databaseName2Info.keys()
     # pdPerformance = pd.DataFrame(columns=['auc', 'eval_accuracy', 'f1_score', 'false_negatives', 'false_positives', 'loss', 'precision',
     #              'recall', 'true_negatives', 'true_positives', 'global_step', 'train', 'test'])
     pdPerformance = pd.DataFrame()
+    tokenizer = create_tokenizer_from_hub_module(BERT_MODEL_HUB)
     for currentTrainDataName in data2Use2Train:
         currentTrainDBInfo = databaseName2Info[currentTrainDataName]
         trainData = None
@@ -497,8 +501,11 @@ def main():
         currentTrainData = importedTrainData[currentTrainDataName]
         infoTrain = databaseName2Info[currentTrainDataName]
         OUTPUT_DIR = getOutputDir(inputDir, processingInfo.time, infoTrain)
+        if currentTrainDataName in trainedModels:
+            pass
+        logger.info(f'Training: {currentTrainDataName}')
         # **********************************************************************************
-        trainedEstimator,tokenizer = trainModel(currentTrainDataName, currentTrainData, infoTrain, OUTPUT_DIR)
+        trainedEstimator,tokenizer = trainModel(currentTrainDataName, currentTrainData, infoTrain, OUTPUT_DIR,tokenizer)
         # **********************************************************************************
 
         # pdPerformance = pd.DataFrame(
@@ -513,6 +520,7 @@ def main():
                 importedTestData[currentTestDataName] = testData
                 # read appropriate test data
             currentTestData = importedTestData[currentTestDataName]
+            logger.info(f'Testing: {currentTestDataName}')
             # **********************************************************************************
             evaluationResults = performancEvaluation(trainedEstimator,currentTestData, infoTrain, OUTPUT_DIR,tokenizer)
             # ***********************_num_records***********************************************************
@@ -539,7 +547,7 @@ def main():
 def writePerformanceMeasures(df,mainDir, timeStr,dataTypeAppendix):
     parentPath = Path(mainDir).parent
     outDir = parentPath / 'Output'
-    outDir.mkdir
+    outDir.mkdir(parents=True, exist_ok=True)
     pOut = outDir / ('performaceMeasures_sentimentTagging_'+timeStr+'_'+dataTypeAppendix+'.csv')
     df.to_csv(pOut, index=False)
 
