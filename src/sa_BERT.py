@@ -470,10 +470,10 @@ def main():
     importedTestData = dict()
     trainedModels = dict()
     evaluationResults = dict()
-    data2Use2Train = ['imdb']  # 'imdb', 'rt' 'finM' 'twitter'
-    data2Use2Test = ['imdb']
-    # data2Use2Train = ['imdb', 'rt', 'twitter', 'finM','finH']  # 'imdb', 'rt' 'finM' 'twitter'
-    # data2Use2Test = ['imdb', 'rt', 'twitter', 'finM','finH']
+    # data2Use2Train = ['imdb']  # 'imdb', 'rt' 'finM' 'twitter'
+    # data2Use2Test = ['imdb']
+    data2Use2Train = ['imdb', 'rt', 'twitter', 'finM','finH']  # 'imdb', 'rt' 'finM' 'twitter'
+    data2Use2Test = ['imdb', 'rt', 'twitter', 'finM','finH']
     inputInfo2Save = {}
     dataModelsResults = dict()
     # %% read command line parameters
@@ -481,8 +481,8 @@ def main():
     inputDir = params.inputDirectoryIMDBData
 
     dataVersionAppendix = DataVersionAppendix()
-    DATA_VERSION_APPENDIX = dataVersionAppendix.shortVersion  # dataVersionAppendix.shortVersion
-    # DATA_VERSION_APPENDIX = dataVersionAppendix.normalVersion
+    # DATA_VERSION_APPENDIX = dataVersionAppendix.shortVersion  # dataVersionAppendix.shortVersion
+    DATA_VERSION_APPENDIX = dataVersionAppendix.normalVersion
     READ_FROM_SOURCE = True  # True #False
     print('')
     # vals = databaseName2Info.keys()
